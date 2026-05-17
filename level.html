@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Interface</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #003d5a, #00243d); /* Gradient background */
+            font-family: Arial, sans-serif;
+            overflow: hidden; /* Prevents scrollbars from appearing */
+            position: relative; /* Position relative for absolute positioning of button */
+        }
+        .outer-box {
+            border: 2px solid #f7ff16; /* Dark teal border */
+            border-radius: 20px; /* Outer box border radius */
+            padding: 30px; /* Increased padding */
+            background-color: rgba(33, 0, 49, 0.9); /* White background with slight transparency */
+            position: relative;
+            width: 500px; /* Increased width */
+            text-align: center;
+            animation: float 2s ease-in-out infinite; /* Floating animation */
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); /* Box shadow */
+        }
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px); /* Float up by 10px */
+            }
+        }
+        .levels {
+            display: flex;
+            flex-direction: column; /* Arrange levels in a column */
+            gap: 15px; /* Increased space between rows */
+        }
+        .level-row {
+            display: flex;
+            justify-content: center; /* Center the levels */
+            gap: 15px; /* Increased space between levels */
+        }
+        .inner-box {
+            border: 1px solid #00796b; /* Dark teal border */
+            border-radius: 10px; /* Inner box border radius */
+            margin: 5px;
+            padding: 20px; /* Increased padding */
+            display: inline-block;
+            width: 70px; /* Increased width */
+            height: 70px; /* Increased height */
+            line-height: 70px; /* Center text vertically */
+            font-weight: bold;
+            font-size: 24px; /* Increased font size */
+            color: #ffffff; /* White text color */
+            transition: background-color 0.3s, transform 0.3s; /* Transition for hover effect */
+            text-decoration: none; /* Remove underline from links */
+        }
+        .inner-box:nth-child(1) { background-color: #470702; } /* Red */
+        .inner-box:nth-child(2) { background-color: #c67000; } /* Orange */
+        .inner-box:nth-child(3) { background-color: #ffd026; } /* Yellow */
+        .inner-box:nth-child(4) { background-color: #006705; } /* Lime */
+        .inner-box:nth-child(5) { background-color: #000671; } /* Teal */
+        .inner-box:nth-child(6) { background-color: #1de9b6; } /* Darker Teal */
+        .inner-box:nth-child(7) { background-color: #00b0ff; } /* Light Blue */
+        .inner-box:nth-child(8) { background-color: #2979ff; } /* Blue */
+        .inner-box:nth-child(9) { background-color: #3d5afe; } /* Indigo */
+        .inner-box:nth-child(10) { background-color: #6200ea; } /* Purple */
+        
+        .inner-box:hover {
+            opacity: 0.9; /* Slightly fade on hover */
+            transform: scale(1.05); /* Slightly enlarge on hover */
+        }
+        .button {
+            border: 1px solid #02ff63;
+            position: absolute;
+            bottom: 20px; /* Position the button at the bottom */
+            left: 20px; /* Position the button to the left */
+            background-color: #025961; /* Dark teal background */
+            color: white;
+            border-radius: 5px;
+            padding: 15px 20px; /* Increased padding */
+            cursor: pointer;
+            font-size: 18px; /* Increased font size for button */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); /* Button shadow */
+            transition: background-color 0.3s; /* Transition for hover effect */
+        }
+        .button:hover {
+            background-color: #032d33; /* Darker teal on hover */
+        }
+        .score {
+            margin: 15px 0;
+            font-size: 24px; /* Increased font size */
+            color: #00796b; /* Dark teal text color */
+        }
+        .hearts {
+            margin: 15px 0;
+        }
+        .heart {
+            color: red;
+            font-size: 30px; /* Increased heart size */
+        }
+        /* Skull CSS */
+        .skull {
+            position: relative;
+            width: 50px;
+            height: 50px;
+            margin: 0 auto;
+        }
+        .skull .head {
+            position: absolute;
+            width: 50px;
+            height: 30px;
+            background-color: #fff;
+            border: 2px solid #000;
+            border-radius: 25px 25px 0 0; /* Rounded top */
+            top: 0;
+            left: 0;
+        }
+        .skull .eye {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #000;
+            border-radius: 50%;
+        }
+        .skull .eye.left {
+            top: 10px;
+            left: 10px;
+        }
+        .skull .eye.right {
+            top: 10px;
+            right: 10px;
+        }
+        .skull .mouth {
+            position: absolute;
+            width: 20px;
+            height: 10px;
+            background-color: #000;
+            border-radius: 0 0 10px 10px; /* Rounded bottom */
+            top: 20px;
+            left: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="outer-box">
+    <div class="levels">
+        <div class="level-row">
+            <a href="fahmigga.html" class="inner-box">1</a>
+            <a href="fahmigga6.html" class="inner-box">2</a>
+            <a href="fahmigga2.html" class="inner-box">3</a>
+            <a href="fahmigaaa.html" class="inner-box">4</a>
+            <a href="fahmiggaboss.html" class="inner-box">
+            
+                <div class="skull">
+                    <div class="head"></div>
+                    <div class="eye left"></div>
+                    <div class="eye right"></div>
+                    <div class="mouth"></div>
+                </div>
+            </a>
+        </div>
+    </div>
+  
+</div>
+
+<button onclick="startGame()" button class="button">Back to Title Screen</button>
+
+<script>
+    function startGame() {
+            // Redirect to the game page
+            window.location.href = 'Title Screen.HTML'; // Change 'game.html' to the actual path of your game page
+        }
+</script>
+
+</body>
+</html>

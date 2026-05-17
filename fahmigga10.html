@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boss Battle Arena</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(to bottom, #0f0c29, #302b63);
+        }
+        canvas {
+            border: 4px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.3);
+            background: linear-gradient(to bottom, #1a1a2e, #16213e);
+        }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+        #score, #lives, #timer, #boss-health {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 0 20px;
+            font-size: 18px;
+            text-shadow: 1px 1px 2px black;
+        }
+        #game-over, #victory-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+        #game-over h1, #victory-screen h1 {
+            color: #FF5252;
+            margin-top: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px black;
+        }
+        button {
+            background: #9c27b0;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 10px 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            background: #7b1fa2;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+        }
+        button:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #boss-health-bar {
+            height: 10px;
+            background: #f44336;
+            border-radius: 5px;
+            margin-top: 5px;
+            transition: width 0.3s;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #boss-phase {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 18px;
+            display: none;
+            z-index: 50;
+            text-shadow: 0 0 10px #ff0000;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.05); }
+            100% { transform: translateX(-50%) scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-container">
+        <div id="score">Score: 0</div>
+        <div id="timer">Time: 2:00</div>
+        <div id="boss-health">
+            Boss Health
+            <div id="boss-health-bar" style="width: 100%"></div>
+        </div>
+        <div id="lives">Lives: ❤️❤️❤️</div>
+    </div>
+    <div id="boss-phase"></div>
+    <div id="game-over">
+        <h1>Game Over</h1>
+        <p id="final-score">Your score: 0</p>
+        <button id="restart-button">Restart Game</button>
+    </div>
+    <div id="victory-screen">
+        <h1>Victory!</h1>
+        <p id="victory-score">Final Score: 0</p>
+        <button id="restart-button-victory">Play Again</button>
+        <button id="restart-button-victory">Play Again</button>
+        
+    </div>
+    <div id="controls">
+        <p>Controls:</p>
+        <p>Move: Arrow Keys or WASD</p>
+        <p>Sword Attack: F or J</p>
+        <p>Shoot Gun: E or K</p>
+    </div>
+    <canvas id="gameCanvas" width="1200" height="600"></canvas>
+    <script>
+        // Game constants
+        const GRAVITY = 0.5;
+        const JUMP_POWER = 12;
+        const PLAYER_SPEED = 6;
+        const BULLET_SPEED = 10;
+        const BOSS_SPEED = 2;
+        const BOSS_SMASH_DAMAGE = 1;
+        const BOSS_PROJECTILE_DAMAGE = 0.5;
+        const GAME_DURATION = 120000;
+        const SWORD_RANGE = 70;
+        const SWORD_ANGLE = Math.PI/4;
+
+        // Game variables
+        let score = 0;
+        let lives = 3;
+        let gameTime = GAME_DURATION;
+        let isGameOver = false;
+        let gameActive = true;
+        let invulnerable = false;
+        let invulnerableTimer = 0;
+        let lastBulletTime = 0;
+        let bulletCooldown = 300;
+        let cameraOffset = { x: 0, y: 0 };
+        let gameStartTime = Date.now();
+        let bossAttackTimer = 0;
+        let bossAttackInterval = 2000;
+        let bossIsSmashing = false;
+        let bossProjectiles = [];
+        let playerBullets = [];
+        let swordSwinging = false;
+        let swordAngle = 0;
+        let swordDirection = 1;
+        let lastSwordAttackTime = 0;
+        let swordCooldown = 500;
+        let bossSmashCooldown = 0;
+        const BOSS_SMASH_COOLDOWN = 4500;
+        let bossRecoveryAttackTimer = 0;
+        const BOSS_RECOVERY_ATTACK_INTERVAL = 600;
+        let bossAngryAttackTimer = 0;
+        const BOSS_ANGRY_ATTACK_INTERVAL = 800;
+        let bossAngryPhase = false;
+
+        // Setup canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const body = document.body;
+
+        // UI elements
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+        const timerElement = document.getElementById('timer');
+        const bossHealthElement = document.getElementById('boss-health-bar');
+        const gameOverElement = document.getElementById('game-over');
+        const victoryElement = document.getElementById('victory-screen');
+        const finalScoreElement = document.getElementById('final-score');
+        const victoryScoreElement = document.getElementById('victory-score');
+        const restartButton = document.getElementById('restart-button');
+        const restartVictoryButton = document.getElementById('restart-button-victory');
+        const bossPhaseElement = document.getElementById('boss-phase');
+        const quitButton = document.getElementById('go-to-levels');
+
+        // Player object
+        const player = {
+            x: 100,
+            y: canvas.height - 100,
+            width: 40,
+            height: 60,
+            dx: 0,
+            dy: 0,
+            color: '#FF5252',
+            isJumping: false,
+            facingRight: true,
+            health: 6,
+            animationFrame: 0,
+            maxAnimationFrames: 8,
+            currentAction: 'idle',
+            frameCount: 0,
+            animationSpeed: 0.2,
+            sword: {
+                damage: 1,
+                cooldown: 0
+            },
+            hitEnemies: new Set()
+        };
+
+        // Boss object with increased health and phases
+        const boss = {
+            x: canvas.width / 2,
+            y: 150,
+            width: 120,
+            height: 120,
+            dx: BOSS_SPEED,
+            dy: 0,
+            color: '#9c27b0',
+            health: 100,  // Increased from 20 to 50
+            maxHealth: 100,
+            direction: 1,
+            isSmashing: false,
+            smashTargetX: 0,
+            smashY: 0,
+            smashSpeed: 0,
+            smashCooldown: 0,
+            isRecovering: false,
+            recoveryY: 0,
+            isAngry: false,
+            attackPattern: 0,
+            phase: 1,  // 1: Normal, 2: Enraged (below 50% health), 3: Frenzy (below 25% health)
+            enrageTimer: 0,
+            enrageDuration: 3000  // 3 seconds of enrage mode
+        };
+
+        // Game objects
+        let platforms = [];
+        let particles = [];
+
+        // Controls
+        const keys = {
+            right: false,
+            left: false,
+            up: false,
+            swordAttack: false,
+            gunShoot: false
+        };
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            if (!gameActive) return;
+            if (e.key === "ArrowRight" || e.key === "d") keys.right = true;
+            if (e.key === "ArrowLeft" || e.key === "a") keys.left = true;
+            if (e.key === "ArrowUp" || e.key === "w" || e.key === " ") keys.up = true;
+            if (e.key === "f" || e.key === "j") keys.swordAttack = true;
+            if (e.key === "e" || e.key === "k") keys.gunShoot = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === "ArrowRight" || e.key === "d") keys.right = false;
+            if (e.key === "ArrowLeft" || e.key === "a") keys.left = false;
+            if (e.key === "ArrowUp" || e.key === "w" || e.key === " ") keys.up = false;
+            if (e.key === "f" || e.key === "j") keys.swordAttack = false;
+            if (e.key === "e" || e.key === "k") keys.gunShoot = false;
+        });
+
+        restartButton.addEventListener('click', resetGame);
+        restartVictoryButton.addEventListener('click', resetGame);
+
+        // Initialize game
+        function initGame() {
+            setupLevel();
+            gameLoop();
+        }
+
+        // Setup level
+        function setupLevel() {
+            platforms = [];
+            particles = [];
+            playerBullets = [];
+            bossProjectiles = [];
+
+            player.x = 100;
+            player.y = canvas.height - 100;
+            player.dx = 0;
+            player.dy = 0;
+            player.isJumping = false;
+            player.hitEnemies.clear();
+            gameActive = true;
+            cameraOffset = { x: 0, y: 0 };
+            gameTime = GAME_DURATION;
+            gameStartTime = Date.now();
+            boss.health = boss.maxHealth;
+            boss.x = canvas.width / 2;
+            boss.y = 150;
+            boss.dx = BOSS_SPEED;
+            boss.isSmashing = false;
+            boss.isRecovering = false;
+            boss.smashCooldown = 0;
+            boss.isAngry = false;
+            boss.attackPattern = 0;
+            boss.phase = 1;
+            boss.enrageTimer = 0;
+            bossAttackTimer = 0;
+            bossRecoveryAttackTimer = 0;
+            bossAngryAttackTimer = 0;
+            bossPhaseElement.style.display = 'none';
+
+            // Platforms
+            platforms.push(
+                { x: 0, y: canvas.height - 20, width: canvas.width * 2, height: 20, color: '#2c3e50', type: 'ground' },
+                { x: 200, y: 450, width: 100, height: 20, color: '#795548', type: 'platform', borderRadius: 10 },
+                { x: 400, y: 350, width: 100, height: 20, color: '#795548', type: 'platform', borderRadius: 10 },
+                { x: 600, y: 250, width: 100, height: 20, color: '#795548', type: 'platform', borderRadius: 10 },
+                { x: 800, y: 350, width: 100, height: 20, color: '#795548', type: 'platform', borderRadius: 10 },
+                { x: 1000, y: 450, width: 100, height: 20, color: '#795548', type: 'platform', borderRadius: 10 }
+            );
+
+            updateUI();
+        }
+
+        // Create particles
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    radius: 2 + Math.random() * 4,
+                    color: color,
+                    dx: (Math.random() - 0.5) * 5,
+                    dy: (Math.random() - 0.5) * 5,
+                    life: 30 + Math.random() * 30
+                });
+            }
+        }
+
+        // Update UI elements
+        function updateUI() {
+            scoreElement.textContent = `Score: ${score}`;
+            livesElement.textContent = `Lives: ${'❤️'.repeat(lives)}`;
+            
+            // Update timer
+            const minutes = Math.floor(gameTime / 60000);
+            const seconds = Math.floor((gameTime % 60000) / 1000).toString().padStart(2, '0');
+            timerElement.textContent = `Time: ${minutes}:${seconds}`;
+            
+            // Update boss health
+            const healthPercent = (boss.health / boss.maxHealth) * 100;
+            bossHealthElement.style.width = `${healthPercent}%`;
+            
+            // Change health bar color based on phase
+            if (boss.phase === 3) {
+                bossHealthElement.style.background = '#FF0000';
+            } else if (boss.phase === 2) {
+                bossHealthElement.style.background = '#FF4500';
+            } else {
+                bossHealthElement.style.background = healthPercent > 50 ? '#4CAF50' : 
+                                                  healthPercent > 25 ? '#FFA000' : '#f44336';
+            }
+        }
+
+        // Draw player with animation
+        function drawPlayer() {
+            // Update animation frame based on player state
+            if (player.dy < 0) {
+                player.currentAction = 'jump';
+            } else if (player.dy > 0 && !player.isJumping) {
+                player.currentAction = 'fall';
+            } else if (keys.right || keys.left) {
+                player.currentAction = 'run';
+            } else {
+                player.currentAction = 'idle';
+            }
+
+            // Update animation frame
+            player.frameCount += player.animationSpeed;
+            player.animationFrame = Math.floor(player.frameCount) % player.maxAnimationFrames;
+
+            // Draw player body
+            ctx.fillStyle = invulnerable ? 'rgba(255, 82, 82, 0.5)' : player.color;
+            ctx.beginPath();
+            
+            // Add some animation to the player shape
+            const walkOffset = Math.sin(player.animationFrame * Math.PI * 2 / player.maxAnimationFrames) * 5;
+            ctx.roundRect(
+                player.x - cameraOffset.x, 
+                player.y - cameraOffset.y + (player.isJumping ? 0 : walkOffset),
+                player.width, 
+                player.height - (player.isJumping ? 0 : walkOffset),
+                10
+            );
+            ctx.fill();
+
+            // Draw player face
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(
+                player.x - cameraOffset.x + (player.facingRight ? 30 : 10), 
+                player.y - cameraOffset.y + 20 + (player.isJumping ? 0 : walkOffset),
+                8, 0, Math.PI * 2
+            );
+            ctx.fill();
+
+            // Draw gun if shooting
+            if (keys.gunShoot || playerBullets.length > 0) {
+                ctx.save();
+                ctx.translate(
+                    player.x - cameraOffset.x + (player.facingRight ? player.width : 0),
+                    player.y - cameraOffset.y + player.height / 2 + (player.isJumping ? 0 : walkOffset)
+                );
+                
+                // Draw gun
+                ctx.fillStyle = '#666';
+                ctx.fillRect(0, -2, 30, 4);
+                ctx.fillStyle = '#333';
+                ctx.fillRect(-5, -4, 5, 8);
+                ctx.restore();
+            }
+
+            // Draw sword if attacking
+            if (swordSwinging || (Date.now() - lastSwordAttackTime < 200)) {
+                ctx.save();
+                ctx.translate(
+                    player.x - cameraOffset.x + (player.facingRight ? player.width : 0),
+                    player.y - cameraOffset.y + player.height / 2 + (player.isJumping ? 0 : walkOffset)
+                );
+                
+                // Rotate sword based on swing progress
+                const angle = player.facingRight ? 
+                    -SWORD_ANGLE + swordAngle * SWORD_ANGLE * 2 : 
+                    Math.PI + SWORD_ANGLE - swordAngle * SWORD_ANGLE * 2;
+                ctx.rotate(angle);
+                
+                // Draw sword
+                ctx.fillStyle = '#BDBDBD';
+                ctx.fillRect(0, -3, SWORD_RANGE, 6);
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(-10, -5, 10, 10);
+                ctx.restore();
+            }
+        }
+
+        // Draw platforms
+        function drawPlatforms() {
+            platforms.forEach(platform => {
+                ctx.fillStyle = platform.color;
+                if (platform.borderRadius) {
+                    ctx.beginPath();
+                    ctx.roundRect(platform.x - cameraOffset.x, platform.y - cameraOffset.y, platform.width, platform.height, platform.borderRadius);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(platform.x - cameraOffset.x, platform.y - cameraOffset.y, platform.width, platform.height);
+                }
+                
+                // Add some texture
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 2;
+                for (let x = platform.x - cameraOffset.x + 5; x < platform.x - cameraOffset.x + platform.width; x += 15) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, platform.y - cameraOffset.y + 2);
+                    ctx.lineTo(x, platform.y - cameraOffset.y + platform.height - 2);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        // Draw boss with phase-based appearance
+        function drawBoss() {
+            // Boss body - changes based on phase
+            let bodyColor = boss.color;
+            if (boss.phase === 3) {
+                bodyColor = '#8B0000'; // Dark red for frenzy phase
+            } else if (boss.phase === 2) {
+                bodyColor = '#9932CC'; // Dark orchid for enraged phase
+            } else if (boss.isAngry) {
+                bodyColor = '#7b1fa2';
+            }
+            
+            ctx.fillStyle = bodyColor;
+            ctx.beginPath();
+            ctx.roundRect(
+                boss.x - cameraOffset.x - boss.width/2, 
+                boss.y - cameraOffset.y - boss.height/2, 
+                boss.width, 
+                boss.height, 
+                20
+            );
+            ctx.fill();
+            
+            // Boss eyes - glow intensity increases with phase
+            let eyeColor = '#FF5252';
+            if (boss.phase === 3) {
+                eyeColor = '#FF0000';
+            } else if (boss.phase === 2) {
+                eyeColor = '#FF6347';
+            } else if (boss.isSmashing || boss.isAngry) {
+                eyeColor = '#FF0000';
+            }
+            
+            ctx.fillStyle = eyeColor;
+            ctx.beginPath();
+            ctx.arc(
+                boss.x - cameraOffset.x - (boss.direction > 0 ? 20 : -20), 
+                boss.y - cameraOffset.y - 10, 
+                10, 0, Math.PI * 2
+            );
+            ctx.arc(
+                boss.x - cameraOffset.x - (boss.direction > 0 ? 40 : -40), 
+                boss.y - cameraOffset.y - 10, 
+                10, 0, Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Boss mouth - wider when in higher phases
+            ctx.strokeStyle = eyeColor;
+            ctx.lineWidth = boss.phase === 3 ? 4 : 3;
+            ctx.beginPath();
+            let mouthSize = 20;
+            if (boss.phase === 3) mouthSize = 40;
+            else if (boss.phase === 2) mouthSize = 35;
+            else if (boss.isSmashing || boss.isAngry) mouthSize = 30;
+            
+            ctx.arc(
+                boss.x - cameraOffset.x, 
+                boss.y - cameraOffset.y + 20, 
+                mouthSize, 0.2 * Math.PI, 0.8 * Math.PI
+            );
+            ctx.stroke();
+            
+            // Boss wings - disappear when attacking
+            if (!boss.isSmashing && !boss.isRecovering) {
+                let wingColor = 'rgba(156, 39, 176, 0.7)';
+                if (boss.phase === 3) wingColor = 'rgba(139, 0, 0, 0.7)';
+                else if (boss.phase === 2) wingColor = 'rgba(153, 50, 204, 0.7)';
+                else if (boss.isAngry) wingColor = 'rgba(123, 31, 162, 0.7)';
+                
+                ctx.fillStyle = wingColor;
+                ctx.beginPath();
+                ctx.ellipse(
+                    boss.x - cameraOffset.x - 70, 
+                    boss.y - cameraOffset.y, 
+                    60, 20, 0, 0, Math.PI * 2
+                );
+                ctx.ellipse(
+                    boss.x - cameraOffset.x + 70, 
+                    boss.y - cameraOffset.y, 
+                    60, 20, 0, 0, Math.PI * 2
+                );
+                ctx.fill();
+            }
+            
+            // Phase indicator aura
+            if (boss.phase > 1) {
+                ctx.strokeStyle = boss.phase === 3 ? '#FF0000' : '#FF4500';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(
+                    boss.x - cameraOffset.x, 
+                    boss.y - cameraOffset.y, 
+                    boss.width/2 + 10, 0, Math.PI * 2
+                );
+                ctx.stroke();
+                
+                if (boss.phase === 3) {
+                    ctx.beginPath();
+                    ctx.arc(
+                        boss.x - cameraOffset.x, 
+                        boss.y - cameraOffset.y, 
+                        boss.width/2 + 15, 0, Math.PI * 2
+                    );
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Draw bullets
+        function drawBullets() {
+            // Player bullets
+            ctx.fillStyle = '#FFEB3B';
+            playerBullets.forEach(bullet => {
+                ctx.beginPath();
+                ctx.arc(bullet.x - cameraOffset.x, bullet.y - cameraOffset.y, bullet.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Boss projectiles
+            bossProjectiles.forEach(proj => {
+                ctx.fillStyle = proj.color || '#9c27b0';
+                ctx.beginPath();
+                ctx.arc(proj.x - cameraOffset.x, proj.y - cameraOffset.y, proj.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Draw particles
+        function drawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x - cameraOffset.x, p.y - cameraOffset.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Update particle
+                p.x += p.dx;
+                p.y += p.dy;
+                p.life--;
+                
+                // Remove dead particles
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // Update camera position to follow player
+        function updateCamera() {
+            // Center camera on player with some easing
+            const targetX = player.x - canvas.width / 2 + player.width / 2;
+            const targetY = player.y - canvas.height / 2 + player.height / 2;
+            
+            // Apply easing to camera movement
+            cameraOffset.x += (targetX - cameraOffset.x) * 0.1;
+            cameraOffset.y += (targetY - cameraOffset.y) * 0.1;
+            
+            // Clamp camera to world bounds
+            cameraOffset.x = Math.max(0, Math.min(cameraOffset.x, canvas.width * 2 - canvas.width));
+            cameraOffset.y = Math.max(0, Math.min(cameraOffset.y, canvas.height - canvas.height));
+        }
+
+        // Handle player movement with improved platform collision
+        function movePlayer() {
+            if (keys.right) {
+                player.dx = PLAYER_SPEED;
+                player.facingRight = true;
+            } else if (keys.left) {
+                player.dx = -PLAYER_SPEED;
+                player.facingRight = false;
+            } else {
+                player.dx = 0;
+            }
+            
+            // Handle shooting
+            if (keys.gunShoot && Date.now() - lastBulletTime > bulletCooldown) {
+                shootBullet();
+                lastBulletTime = Date.now();
+            }
+            
+            // Handle sword attack
+            if (keys.swordAttack && Date.now() - lastSwordAttackTime > swordCooldown) {
+                swordSwinging = true;
+                swordAngle = 0;
+                swordDirection = 1;
+                lastSwordAttackTime = Date.now();
+                player.hitEnemies.clear();
+                createParticles(
+                    player.x + (player.facingRight ? player.width : 0),
+                    player.y + player.height/2,
+                    '#FFD700', 8
+                );
+            }
+            
+            if (keys.up && !player.isJumping) {
+                player.dy = -JUMP_POWER;
+                player.isJumping = true;
+                createParticles(player.x + player.width/2, player.y + player.height, '#FF5252', 5);
+            }
+            
+            // Apply horizontal movement with collision
+            player.x += player.dx;
+            
+            // Check horizontal collisions with platforms
+            platforms.forEach(platform => {
+                if (platform.type === 'ground') return;
+                
+                // Check if player is intersecting with platform horizontally
+                if (player.y + player.height > platform.y && player.y < platform.y + platform.height) {
+                    // Check right collision
+                    if (player.dx > 0 && player.x + player.width > platform.x && player.x < platform.x) {
+                        player.x = platform.x - player.width;
+                    }
+                    // Check left collision
+                    else if (player.dx < 0 && player.x < platform.x + platform.width && player.x + player.width > platform.x + platform.width) {
+                        player.x = platform.x + platform.width;
+                    }
+                }
+            });
+            
+            // Apply gravity
+            player.dy += GRAVITY;
+            player.y += player.dy;
+            
+            // Check vertical collisions
+            let onGround = false;
+            
+            platforms.forEach(platform => {
+                // Check if player is above platform and falling
+                if (player.x + player.width > platform.x && 
+                    player.x < platform.x + platform.width && 
+                    player.y + player.height > platform.y && 
+                    player.y + player.height <= platform.y + player.dy) {
+                    
+                    player.dy = 0;
+                    player.y = platform.y - player.height;
+                    player.isJumping = false;
+                    onGround = true;
+                }
+                
+                // Prevent phasing through from below
+                if (player.x + player.width > platform.x && 
+                    player.x < platform.x + platform.width && 
+                    player.y < platform.y + platform.height && 
+                    player.y + player.height >= platform.y + platform.height) {
+                    
+                    player.dy = 0;
+                    player.y = platform.y + platform.height;
+                }
+            });
+            
+            // Ground collision
+            if (player.y + player.height >= canvas.height - 20) {
+                player.dy = 0;
+                player.y = canvas.height - 20 - player.height;
+                player.isJumping = false;
+                onGround = true;
+            }
+            
+            // Prevent player from going off-screen horizontally
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width * 2) player.x = canvas.width * 2 - player.width;
+        }
+
+        // Shoot a bullet that targets the boss
+        function shootBullet() {
+            // Calculate direction to boss
+            const angle = Math.atan2(
+                boss.y - (player.y + player.height/2),
+                boss.x - (player.x + player.width/2)
+            );
+            
+            playerBullets.push({
+                x: player.x + (player.facingRight ? player.width : 0),
+                y: player.y + player.height / 2,
+                dx: Math.cos(angle) * BULLET_SPEED,
+                dy: Math.sin(angle) * BULLET_SPEED,
+                radius: 5,
+                color: '#FFEB3B'
+            });
+            
+            // Recoil effect
+            player.dx += -Math.cos(angle) * 2;
+            player.dy += -Math.sin(angle) * 2;
+            
+            // Muzzle flash
+            createParticles(
+                player.x + (player.facingRight ? player.width : 0),
+                player.y + player.height / 2,
+                '#FF9800', 3
+            );
+        }
+
+        // Update sword swing
+        function updateSword() {
+            if (swordSwinging) {
+                swordAngle += 0.1 * swordDirection;
+                if (swordAngle >= 1) {
+                    swordDirection = -1;
+                } else if (swordAngle <= 0) {
+                    swordSwinging = false;
+                }
+                
+                // Check for hits during swing
+                checkSwordHits();
+            }
+        }
+
+        // Check sword hits
+        function checkSwordHits() {
+            if (Math.abs(boss.y - (player.y + player.height/2)) < boss.height/2 + 30) {
+                const swordX = player.x + (player.facingRight ? player.width : 0);
+                const swordY = player.y + player.height / 2;
+                
+                const angle = player.facingRight ? 
+                    -SWORD_ANGLE + swordAngle * SWORD_ANGLE * 2 : 
+                    Math.PI + SWORD_ANGLE - swordAngle * SWORD_ANGLE * 2;
+                
+                const tipX = swordX + Math.cos(angle) * SWORD_RANGE;
+                const tipY = swordY + Math.sin(angle) * SWORD_RANGE;
+                
+                const distance = Math.sqrt(
+                    Math.pow(tipX - boss.x, 2) + 
+                    Math.pow(tipY - boss.y, 2)
+                );
+                
+                if (distance < 50 && !player.hitEnemies.has(boss)) {
+                    boss.health -= player.sword.damage;
+                    player.hitEnemies.add(boss);
+                    score += 15;
+                    
+                    // Knockback effect
+                    boss.dx = (boss.x < player.x ? -5 : 5);
+                    boss.dy = -3;
+                    
+                    if (boss.health <= 0) {
+                        victory();
+                    }
+                    
+                    createParticles(boss.x, boss.y, '#FFA000', 10);
+                    updateUI();
+                }
+            }
+        }
+
+        // Update bullets and check collisions
+        function updateBullets() {
+            // Update player bullets
+            for (let i = playerBullets.length - 1; i >= 0; i--) {
+                const bullet = playerBullets[i];
+                bullet.x += bullet.dx;
+                bullet.y += bullet.dy;
+                
+                // Check if bullet hits boss
+                if (Math.abs(bullet.x - boss.x) < boss.width/2 + bullet.radius &&
+                    Math.abs(bullet.y - boss.y) < boss.height/2 + bullet.radius) {
+                    
+                    boss.health -= 1;
+                    createParticles(bullet.x, bullet.y, '#FFEB3B', 10);
+                    playerBullets.splice(i, 1);
+                    score += 10;
+                    
+                    if (boss.health <= 0) {
+                        victory();
+                    }
+                    
+                    updateUI();
+                    continue;
+                }
+                
+                // Remove bullets that go off-screen
+                if (bullet.x < 0 || bullet.x > canvas.width * 2 || 
+                    bullet.y < 0 || bullet.y > canvas.height) {
+                    playerBullets.splice(i, 1);
+                }
+            }
+            
+            // Update boss projectiles
+            for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+                const proj = bossProjectiles[i];
+                proj.x += proj.dx;
+                proj.y += proj.dy;
+                
+                // Check if projectile hits player
+                if (!invulnerable &&
+                    Math.abs(proj.x - (player.x + player.width/2)) < player.width/2 + proj.radius &&
+                    Math.abs(proj.y - (player.y + player.height/2)) < player.height/2 + proj.radius) {
+                    
+                    takeDamage(BOSS_PROJECTILE_DAMAGE);
+                    createParticles(proj.x, proj.y, '#9c27b0', 10);
+                    bossProjectiles.splice(i, 1);
+                    continue;
+                }
+                
+                // Remove projectiles that go off-screen
+                if (proj.x < 0 || proj.x > canvas.width * 2 || 
+                    proj.y < 0 || proj.y > canvas.height) {
+                    bossProjectiles.splice(i, 1);
+                }
+            }
+        }
+
+        // Enhanced boss behavior with phases
+        function updateBoss() {
+            // Update boss phase based on health
+            const healthPercent = (boss.health / boss.maxHealth) * 100;
+            if (healthPercent < 25 && boss.phase < 3) {
+                boss.phase = 3; // Frenzy mode
+                bossPhaseElement.textContent = "BOSS ENTERED FREAKY(FAREEZ) MODE!";
+                bossPhaseElement.style.display = 'block';
+                setTimeout(() => bossPhaseElement.style.display = 'none', 2000);
+            } else if (healthPercent < 50 && boss.phase < 2) {
+                boss.phase = 2; // Enraged mode
+                bossPhaseElement.textContent = "BOSS IS ENRAGED!";
+                bossPhaseElement.style.display = 'block';
+                setTimeout(() => bossPhaseElement.style.display = 'none', 2000);
+            }
+            
+            // Update boss states
+            boss.isAngry = boss.smashCooldown > 0 && !boss.isSmashing && !boss.isRecovering;
+            
+            // Update smash cooldown
+            if (boss.smashCooldown > 0) {
+                boss.smashCooldown -= 16;
+            }
+
+            // Adjust attack intervals based on phase
+            let currentAttackInterval = bossAttackInterval;
+            let currentAngryInterval = BOSS_ANGRY_ATTACK_INTERVAL;
+            let currentRecoveryInterval = BOSS_RECOVERY_ATTACK_INTERVAL;
+            
+            if (boss.phase === 3) { // Frenzy mode
+                currentAttackInterval *= 0.5; // 2x faster attacks
+                currentAngryInterval *= 0.4; // 2.5x faster angry attacks
+                currentRecoveryInterval *= 0.5;
+            } else if (boss.phase === 2) { // Enraged mode
+                currentAttackInterval *= 0.7; // ~1.4x faster attacks
+                currentAngryInterval *= 0.6;
+                currentRecoveryInterval *= 0.7;
+            }
+
+            // Angry phase behavior (during smash cooldown)
+            if (boss.isAngry) {
+                const speedMultiplier = boss.phase === 3 ? 2 : (boss.phase === 2 ? 1.75 : 1.5);
+                boss.dx = BOSS_SPEED * speedMultiplier * boss.direction;
+                
+                // More frequent and patterned attacks during angry phase
+                bossAngryAttackTimer += 16;
+                if (bossAngryAttackTimer >= currentAngryInterval) {
+                    bossAngryAttackTimer = 0;
+                    boss.attackPattern = (boss.attackPattern + 1) % 3;
+                    
+                    // Different attack patterns with phase-based enhancements
+                    switch(boss.attackPattern) {
+                        case 0: // Triple shot
+                            const tripleCount = boss.phase === 3 ? 5 : 3;
+                            for (let i = -Math.floor(tripleCount/2); i <= Math.floor(tripleCount/2); i++) {
+                                const angle = Math.atan2(
+                                    player.y + player.height/2 - boss.y,
+                                    player.x + player.width/2 - boss.x
+                                ) + i * 0.3;
+                                const speed = boss.phase === 3 ? 7 : (boss.phase === 2 ? 6 : 5);
+                                bossProjectiles.push({
+                                    x: boss.x,
+                                    y: boss.y,
+                                    dx: Math.cos(angle) * speed,
+                                    dy: Math.sin(angle) * speed,
+                                    radius: 10,
+                                    color: boss.phase === 3 ? '#FF1493' : '#FF00FF'
+                                });
+                            }
+                            break;
+                            
+                        case 1: // Spread shot
+                            const spreadCount = boss.phase === 3 ? 7 : 5;
+                            for (let i = 0; i < spreadCount; i++) {
+                                const angle = Math.atan2(
+                                    player.y + player.height/2 - boss.y,
+                                    player.x + player.width/2 - boss.x
+                                ) + (i - Math.floor(spreadCount/2)) * 0.2;
+                                bossProjectiles.push({
+                                    x: boss.x,
+                                    y: boss.y,
+                                    dx: Math.cos(angle) * 5,
+                                    dy: Math.sin(angle) * 5,
+                                    radius: 8,
+                                    color: boss.phase === 3 ? '#FF1493' : '#FF00FF'
+                                });
+                            }
+                            break;
+                            
+                        case 2: // Targeted barrage
+                            const barrageCount = boss.phase === 3 ? 5 : 3;
+                            for (let i = 0; i < barrageCount; i++) {
+                                setTimeout(() => {
+                                    const angle = Math.atan2(
+                                        player.y + player.height/2 - boss.y,
+                                        player.x + player.width/2 - boss.x
+                                    );
+                                    bossProjectiles.push({
+                                        x: boss.x,
+                                        y: boss.y,
+                                        dx: Math.cos(angle) * (boss.phase === 3 ? 8 : 7),
+                                        dy: Math.sin(angle) * (boss.phase === 3 ? 8 : 7),
+                                        radius: 9,
+                                        color: boss.phase === 3 ? '#FF1493' : '#FF00FF'
+                                    });
+                                }, i * (boss.phase === 3 ? 150 : 200));
+                            }
+                            break;
+                    }
+                }
+            }
+            // Normal behavior
+            else if (!boss.isSmashing && !boss.isRecovering) {
+                const speedMultiplier = boss.phase === 3 ? 1.5 : (boss.phase === 2 ? 1.25 : 1);
+                boss.x += boss.dx * speedMultiplier;
+                
+                // Change direction at edges
+                if (boss.x < boss.width/2) {
+                    boss.x = boss.width/2;
+                    boss.dx = BOSS_SPEED;
+                    boss.direction = 1;
+                } else if (boss.x > canvas.width * 2 - boss.width/2) {
+                    boss.x = canvas.width * 2 - boss.width/2;
+                    boss.dx = -BOSS_SPEED;
+                    boss.direction = -1;
+                }
+                
+                // Normal attacks
+                bossAttackTimer += 16;
+                if (bossAttackTimer >= currentAttackInterval) {
+                    bossAttackTimer = 0;
+                    
+                    if (boss.smashCooldown <= 0 && Math.random() < (boss.phase === 3 ? 0.5 : 0.3)) {
+                        // Start smash attack
+                        boss.isSmashing = true;
+                        boss.smashTargetX = player.x + player.width/2;
+                        boss.smashY = boss.y;
+                        boss.smashSpeed = boss.phase === 3 ? 12 : (boss.phase === 2 ? 10 : 8);
+                        boss.dx = (boss.smashTargetX - boss.x) / 20;
+                        boss.smashCooldown = BOSS_SMASH_COOLDOWN;
+                    } else {
+                        // Normal projectile attack - more projectiles in higher phases
+                        const projectileCount = boss.phase === 3 ? 2 : 1;
+                        for (let i = 0; i < projectileCount; i++) {
+                            const angle = Math.atan2(
+                                player.y + player.height/2 - boss.y,
+                                player.x + player.width/2 - boss.x
+                            ) + (i - (projectileCount-1)/2) * 0.1;
+                            bossProjectiles.push({
+                                x: boss.x,
+                                y: boss.y,
+                                dx: Math.cos(angle) * (boss.phase === 3 ? 6 : 5),
+                                dy: Math.sin(angle) * (boss.phase === 3 ? 6 : 5),
+                                radius: 10,
+                                color: boss.phase === 3 ? '#FF6347' : '#9c27b0'
+                            });
+                        }
+                    }
+                }
+            }
+            // Smash attack behavior
+            else if (boss.isSmashing) {
+                if (boss.smashSpeed > 0) {
+                    boss.y += boss.smashSpeed;
+                    boss.smashSpeed += 0.5 * (boss.phase === 3 ? 1.2 : 1);
+                    boss.x += boss.dx;
+                    
+                    if (boss.y + boss.height/2 >= canvas.height - 20) {
+                        boss.y = canvas.height - 20 - boss.height/2;
+                        boss.smashSpeed = boss.phase === 3 ? -10 : -8;
+                        createParticles(boss.x, boss.y + boss.height/2, 
+                                      boss.phase === 3 ? '#8B0000' : '#9c27b0', 
+                                      boss.phase === 3 ? 40 : 30);
+                        
+                        if (Math.abs(player.x + player.width/2 - boss.x) < boss.width/2 + player.width/2 &&
+                            player.y + player.height > canvas.height - 40) {
+                            takeDamage(boss.phase === 3 ? BOSS_SMASH_DAMAGE * 1.5 : BOSS_SMASH_DAMAGE);
+                        }
+                        
+                        boss.isSmashing = false;
+                        boss.isRecovering = true;
+                        boss.recoveryY = boss.y;
+                    }
+                }
+            }
+            // Recovery behavior
+            else if (boss.isRecovering) {
+                const recoverySpeed = boss.phase === 3 ? 4 : (boss.phase === 2 ? 3.5 : 3);
+                boss.y -= recoverySpeed;
+                
+                // Faster attacks during recovery
+                bossRecoveryAttackTimer += 16;
+                if (bossRecoveryAttackTimer >= currentRecoveryInterval) {
+                    bossRecoveryAttackTimer = 0;
+                    
+                    // More projectiles in higher phases
+                    const recoveryShots = boss.phase === 3 ? 3 : 2;
+                    for (let i = 0; i < recoveryShots; i++) {
+                        const angle = Math.atan2(
+                            player.y + player.height/2 - boss.y,
+                            player.x + player.width/2 - boss.x
+                        ) + (i - (recoveryShots-1)/2) * 0.2;
+                        bossProjectiles.push({
+                            x: boss.x,
+                            y: boss.y,
+                            dx: Math.cos(angle) * (boss.phase === 3 ? 7 : 6),
+                            dy: Math.sin(angle) * (boss.phase === 3 ? 7 : 6),
+                            radius: 10,
+                            color: boss.phase === 3 ? '#FF6347' : '#9c27b0'
+                        });
+                    }
+                }
+                
+                if (boss.y <= boss.smashY) {
+                    boss.y = boss.smashY;
+                    boss.isRecovering = false;
+                    boss.dx = BOSS_SPEED * boss.direction;
+                    bossRecoveryAttackTimer = 0;
+                }
+            }
+        }
+
+        // Update timer
+        function updateTimer() {
+            const elapsed = Date.now() - gameStartTime;
+            gameTime = Math.max(0, GAME_DURATION - elapsed);
+            updateUI();
+            
+            if (gameTime <= 0) {
+                gameOver();
+            }
+        }
+
+        // Player takes damage
+        function takeDamage(amount = 1) {
+            if (!invulnerable) {
+                lives -= amount;
+                invulnerable = true;
+                invulnerableTimer = 60;
+                if (lives <= 0) {
+                    gameOver();
+                }
+                updateUI();
+                
+                // Knockback effect
+                player.dx = (player.x < boss.x ? -8 : 8);
+                player.dy = -5;
+                createParticles(
+                    player.x + player.width/2, 
+                    player.y + player.height/2,
+                    '#FF5252', 10
+                );
+            }
+        }
+
+        // Update invulnerability
+        function updateInvulnerability() {
+            if (invulnerable) {
+                invulnerableTimer--;
+                if (invulnerableTimer <= 0) {
+                    invulnerable = false;
+                }
+            }
+        }
+
+        // Game over
+        function gameOver() {
+            isGameOver = true;
+            gameActive = false;
+            finalScoreElement.textContent = `Your score: ${score}`;
+            gameOverElement.style.display = 'block';
+        }
+
+        // Victory
+        function victory() {
+            gameActive = false;
+            victoryScoreElement.textContent = `Final Score: ${score + Math.floor(gameTime / 100)}`;
+            victoryElement.style.display = 'block';
+        }
+
+        // Reset game
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            isGameOver = false;
+            gameOverElement.style.display = 'none';
+            victoryElement.style.display = 'none';
+            setupLevel();
+            gameActive = true;
+        }
+
+
+        
+        // Main game loop
+        function gameLoop() {
+            if (!gameActive) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Update camera position
+            updateCamera();
+            
+            // Update sword swing
+            updateSword();
+            
+            // Draw game elements
+            drawPlatforms();
+            drawPlayer();
+            drawBoss();
+            drawBullets();
+            drawParticles();
+
+            // Update game state
+            movePlayer();
+            updateBoss();
+            updateBullets();
+            updateTimer();
+            updateInvulnerability();
+
+            // Continue loop
+            requestAnimationFrame(gameLoop);
+        }
+
+       
+
+        // Start the game
+        initGame();
+    </script>
+</body>
+</html>

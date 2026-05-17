@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Necro: Thunder King Boss</title>
+    <link rel="icon" href="56.webp" type="image/webp">
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            transition: background 1s ease;
+            background: linear-gradient(to bottom, #0f0c29, #302b63);
+        }
+        canvas {
+            border: 4px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.3);
+            background: linear-gradient(to bottom, #1a1a2e, #16213e);
+        }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+        #score, #lives, #boss-health {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 0 20px;
+            font-size: 18px;
+            text-shadow: 1px 1px 2px black;
+        }
+        #game-over, #victory-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+        #game-over h1, #victory-screen h1 {
+            color: #FF5252;
+            margin-top: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px black;
+        }
+        button {
+            background: #9c27b0;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 10px 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            background: #7b1fa2;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+        }
+        #boss-intro {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 100;
+        }
+        #boss-intro h1 {
+            color: #FFEB3B;
+            margin-top: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px black;
+        }
+        .lightning {
+            position: absolute;
+            width: 3px;
+            background: white;
+            box-shadow: 0 0 10px 2px #2196F3;
+            z-index: 10;
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-container">
+        <div id="score">Score: 0</div>
+        <div id="boss-health">Thunder King: ❤️❤️❤️❤️❤️</div>
+        <div id="lives">Lives: ❤️❤️❤️</div>
+    </div>
+    
+    <div id="game-over">
+        <h1>Game Over</h1>
+        <p id="final-score">Your score: 0</p>
+        <button id="restart-button">Try Again</button>
+    </div>
+    
+    <div id="victory-screen">
+        <h1>Victory!</h1>
+        <p id="victory-score">You defeated the Thunder King!</p>
+        <p>Final Score: <span id="final-victory-score">0</span></p>
+        <button id="victory-restart-button">Next Stage</button>
+    </div>
+    
+    <div id="boss-intro">
+        <h1>THUNDER KING</h1>
+        <p>Defeat the ruler of the storm!</p>
+        <p>Avoid lightning strikes and attack when the shield is down</p>
+        <button id="start-boss-button">Begin Battle</button>
+    </div>
+    
+    <canvas id="gameCanvas" width="1200" height="600"></canvas>
+    
+    <script>
+        // Game constants
+        const GRAVITY = 0.5;
+        const JUMP_POWER = 12;
+        const PLAYER_SPEED = 6;
+        const SWORD_RANGE = 70;
+        const SWORD_ANGLE = Math.PI/4;
+        
+        // Game variables
+        let score = 0;
+        let lives = 3;
+        let isGameOver = false;
+        let gameActive = false;
+        let invulnerable = false;
+        let invulnerableTimer = 0;
+        let swordSwinging = false;
+        let swordAngle = 0;
+        let swordDirection = 1;
+        let cameraOffset = { x: 0, y: 0 };
+        
+        // Boss variables
+        const boss = {
+            x: 900,
+            y: 200,
+            width: 120,
+            height: 180,
+            health: 5,
+            maxHealth: 5,
+            state: 'idle', // 'idle', 'charging', 'attacking', 'vulnerable'
+            stateTimer: 0,
+            shieldUp: true,
+            lightningTargets: [],
+            lightningCooldown: 0,
+            projectiles: []
+        };
+        
+        // Setup canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // UI elements
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+        const bossHealthElement = document.getElementById('boss-health');
+        const gameOverElement = document.getElementById('game-over');
+        const victoryElement = document.getElementById('victory-screen');
+        const finalScoreElement = document.getElementById('final-score');
+        const finalVictoryScoreElement = document.getElementById('final-victory-score');
+        const restartButton = document.getElementById('restart-button');
+        const victoryRestartButton = document.getElementById('victory-restart-button');
+        const bossIntroElement = document.getElementById('boss-intro');
+        const startBossButton = document.getElementById('start-boss-button');
+        
+        // Player object
+        const player = {
+            x: 100,
+            y: canvas.height - 100,
+            width: 40,
+            height: 60,
+            dx: 0,
+            dy: 0,
+            color: '#FF5252',
+            isJumping: false,
+            facingRight: true,
+            sword: {
+                damage: 1,
+                cooldown: 0
+            },
+            hitBoss: false,
+            animationFrame: 0,
+            maxAnimationFrames: 8,
+            currentAction: 'idle',
+            frameCount: 0,
+            animationSpeed: 0.2
+        };
+        
+        // Platforms
+        let platforms = [
+            { x: 0, y: canvas.height - 20, width: canvas.width * 2, height: 20, color: '#2c3e50', type: 'ground' },
+            { x: 300, y: 450, width: 150, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 10 },
+            { x: 600, y: 350, width: 150, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 10 },
+            { x: 900, y: 450, width: 150, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 10 }
+        ];
+        
+        // Particles
+        let particles = [];
+        
+        // Controls
+        const keys = {
+            right: false,
+            left: false,
+            up: false,
+            attack: false
+        };
+        
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            if (!gameActive) return;
+            if (e.key === "ArrowRight" || e.key === "d") keys.right = true;
+            if (e.key === "ArrowLeft" || e.key === "a") keys.left = true;
+            if (e.key === "ArrowUp" || e.key === "w" || e.key === " ") keys.up = true;
+            if (e.key === "f" || e.key === "j") keys.attack = true;
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.key === "ArrowRight" || e.key === "d") keys.right = false;
+            if (e.key === "ArrowLeft" || e.key === "a") keys.left = false;
+            if (e.key === "ArrowUp" || e.key === "w" || e.key === " ") keys.up = false;
+            if (e.key === "f" || e.key === "j") keys.attack = false;
+        });
+        
+       
+        victoryRestartButton.addEventListener('click', () => {
+    // Redirect to another stage.html when clicked
+    window.location.href = "fahmigga2.html";
+});
+
+restartButton.addEventListener('click', resetGame);
+        startBossButton.addEventListener('click', startBossBattle);
+        
+        // Initialize game
+        function initGame() {
+            bossIntroElement.style.display = 'block';
+            updateUI();
+        }
+        
+        // Start boss battle
+        function startBossBattle() {
+            bossIntroElement.style.display = 'none';
+            gameActive = true;
+            gameLoop();
+        }
+        
+        // Create particles
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    radius: 2 + Math.random() * 4,
+                    color: color,
+                    dx: (Math.random() - 0.5) * 5,
+                    dy: (Math.random() - 0.5) * 5,
+                    life: 30 + Math.random() * 30
+                });
+            }
+        }
+        
+        // Update UI elements
+        function updateUI() {
+            scoreElement.textContent = `Score: ${score}`;
+            livesElement.textContent = `Lives: ${'❤️'.repeat(lives)}`;
+            bossHealthElement.textContent = `Thunder King: ${'❤️'.repeat(boss.health)}`;
+        }
+        
+        // Draw player with animation
+        function drawPlayer() {
+            // Update animation frame based on player state
+            if (player.dy < 0) {
+                player.currentAction = 'jump';
+            } else if (player.dy > 0 && !player.isJumping) {
+                player.currentAction = 'fall';
+            } else if (keys.right || keys.left) {
+                player.currentAction = 'run';
+            } else {
+                player.currentAction = 'idle';
+            }
+            
+            // Update animation frame
+            player.frameCount += player.animationSpeed;
+            player.animationFrame = Math.floor(player.frameCount) % player.maxAnimationFrames;
+            
+            // Draw player body
+            ctx.fillStyle = invulnerable ? 'rgba(255, 82, 82, 0.5)' : player.color;
+            ctx.beginPath();
+            
+            // Add some animation to the player shape
+            const walkOffset = Math.sin(player.animationFrame * Math.PI * 2 / player.maxAnimationFrames) * 5;
+            ctx.roundRect(
+                player.x - cameraOffset.x, 
+                player.y - cameraOffset.y + (player.isJumping ? 0 : walkOffset),
+                player.width, 
+                player.height - (player.isJumping ? 0 : walkOffset),
+                10
+            );
+            ctx.fill();
+            
+            // Draw player face
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(
+                player.x - cameraOffset.x + (player.facingRight ? 30 : 10), 
+                player.y - cameraOffset.y + 20 + (player.isJumping ? 0 : walkOffset),
+                8, 0, Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Draw sword if attacking
+            if (swordSwinging || player.sword.cooldown > 0) {
+                ctx.save();
+                ctx.translate(
+                    player.x - cameraOffset.x + (player.facingRight ? player.width : 0),
+                    player.y - cameraOffset.y + player.height / 2 + (player.isJumping ? 0 : walkOffset)
+                );
+                
+                // Rotate sword based on swing progress
+                const angle = player.facingRight ? 
+                    -SWORD_ANGLE + swordAngle * SWORD_ANGLE * 2 : 
+                    Math.PI + SWORD_ANGLE - swordAngle * SWORD_ANGLE * 2;
+                ctx.rotate(angle);
+                
+                // Draw sword with animation
+                ctx.fillStyle = '#BDBDBD';
+                ctx.fillRect(0, -3, SWORD_RANGE, 6);
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(-10, -5, 10, 10);
+                ctx.restore();
+            }
+        }
+        
+        // Draw platforms
+        function drawPlatforms() {
+            platforms.forEach(platform => {
+                ctx.fillStyle = platform.color;
+                if (platform.borderRadius) {
+                    ctx.beginPath();
+                    ctx.roundRect(platform.x - cameraOffset.x, platform.y - cameraOffset.y, platform.width, platform.height, platform.borderRadius);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(platform.x - cameraOffset.x, platform.y - cameraOffset.y, platform.width, platform.height);
+                }
+                
+                // Add some texture
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 2;
+                for (let x = platform.x - cameraOffset.x + 5; x < platform.x - cameraOffset.x + platform.width; x += 15) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, platform.y - cameraOffset.y + 2);
+                    ctx.lineTo(x, platform.y - cameraOffset.y + platform.height - 2);
+                    ctx.stroke();
+                }
+            });
+        }
+        
+        // Draw boss
+        function drawBoss() {
+            // Boss body
+            ctx.fillStyle = '#2196F3';
+            ctx.beginPath();
+            ctx.roundRect(
+                boss.x - cameraOffset.x, 
+                boss.y - cameraOffset.y, 
+                boss.width, 
+                boss.height, 
+                20
+            );
+            ctx.fill();
+            
+            // Boss head
+            ctx.fillStyle = '#1565C0';
+            ctx.beginPath();
+            ctx.arc(
+                boss.x - cameraOffset.x + boss.width/2, 
+                boss.y - cameraOffset.y - 30, 
+                40, 0, Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Boss eyes
+            ctx.fillStyle = '#FFEB3B';
+            ctx.beginPath();
+            ctx.arc(
+                boss.x - cameraOffset.x + boss.width/2 - 15, 
+                boss.y - cameraOffset.y - 40, 
+                8, 0, Math.PI * 2
+            );
+            ctx.arc(
+                boss.x - cameraOffset.x + boss.width/2 + 15, 
+                boss.y - cameraOffset.y - 40, 
+                8, 0, Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Boss mouth (changes with state)
+            ctx.strokeStyle = '#FFEB3B';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            
+            if (boss.state === 'charging') {
+                // Open mouth when charging
+                ctx.arc(
+                    boss.x - cameraOffset.x + boss.width/2, 
+                    boss.y - cameraOffset.y - 20, 
+                    20, 0.2 * Math.PI, 0.8 * Math.PI
+                );
+            } else if (boss.state === 'attacking') {
+                // Angry mouth when attacking
+                ctx.moveTo(
+                    boss.x - cameraOffset.x + boss.width/2 - 20, 
+                    boss.y - cameraOffset.y - 20
+                );
+                ctx.lineTo(
+                    boss.x - cameraOffset.x + boss.width/2 + 20, 
+                    boss.y - cameraOffset.y - 20
+                );
+            } else {
+                // Neutral mouth otherwise
+                ctx.moveTo(
+                    boss.x - cameraOffset.x + boss.width/2 - 15, 
+                    boss.y - cameraOffset.y - 20
+                );
+                ctx.lineTo(
+                    boss.x - cameraOffset.x + boss.width/2 + 15, 
+                    boss.y - cameraOffset.y - 20
+                );
+            }
+            ctx.stroke();
+            
+            // Draw shield if active
+            if (boss.shieldUp) {
+                ctx.strokeStyle = 'rgba(255, 235, 59, 0.7)';
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(
+                    boss.x - cameraOffset.x + boss.width/2, 
+                    boss.y - cameraOffset.y + boss.height/2, 
+                    boss.width + 30, 0, Math.PI * 2
+                );
+                ctx.stroke();
+            }
+            
+            // Draw lightning projectiles
+            boss.projectiles.forEach(proj => {
+                ctx.strokeStyle = '#2196F3';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(proj.x - cameraOffset.x, proj.y - cameraOffset.y);
+                ctx.lineTo(proj.x - cameraOffset.x + proj.dx * 10, proj.y - cameraOffset.y + proj.dy * 10);
+                ctx.stroke();
+            });
+        }
+        
+        // Draw particles
+        function drawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x - cameraOffset.x, p.y - cameraOffset.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Update particle
+                p.x += p.dx;
+                p.y += p.dy;
+                p.life--;
+                
+                // Remove dead particles
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        // Update camera position to follow player
+        function updateCamera() {
+            // Center camera on player with some easing
+            const targetX = player.x - canvas.width / 2 + player.width / 2;
+            const targetY = player.y - canvas.height / 2 + player.height / 2;
+            
+            // Apply easing to camera movement
+            cameraOffset.x += (targetX - cameraOffset.x) * 0.1;
+            cameraOffset.y += (targetY - cameraOffset.y) * 0.1;
+            
+            // Clamp camera to world bounds
+            cameraOffset.x = Math.max(0, Math.min(cameraOffset.x, canvas.width * 2 - canvas.width));
+            cameraOffset.y = Math.max(0, Math.min(cameraOffset.y, canvas.height - canvas.height));
+        }
+        
+        // Handle player movement with platform collision
+        function movePlayer() {
+            if (keys.right) {
+                player.dx = PLAYER_SPEED;
+                player.facingRight = true;
+            } else if (keys.left) {
+                player.dx = -PLAYER_SPEED;
+                player.facingRight = false;
+            } else {
+                player.dx = 0;
+            }
+            
+            if (keys.up && !player.isJumping) {
+                player.dy = -JUMP_POWER;
+                player.isJumping = true;
+                createParticles(player.x + player.width/2, player.y + player.height, '#FF5252', 5);
+            }
+            
+            // Handle sword attack
+            if (keys.attack && player.sword.cooldown <= 0) {
+                swordSwinging = true;
+                swordAngle = 0;
+                swordDirection = 1;
+                player.sword.cooldown = 30;
+                player.hitBoss = false;
+                createParticles(
+                    player.x + (player.facingRight ? player.width : 0),
+                    player.y + player.height/2,
+                    '#FFD700', 8
+                );
+            }
+            
+            // Apply horizontal movement with collision
+            player.x += player.dx;
+            
+            // Check horizontal collisions with platforms
+            platforms.forEach(platform => {
+                if (player.y + player.height > platform.y && player.y < platform.y + platform.height) {
+                    // Check right collision
+                    if (player.dx > 0 && player.x + player.width > platform.x && player.x < platform.x) {
+                        player.x = platform.x - player.width;
+                    }
+                    // Check left collision
+                    else if (player.dx < 0 && player.x < platform.x + platform.width && player.x + player.width > platform.x + platform.width) {
+                        player.x = platform.x + platform.width;
+                    }
+                }
+            });
+            
+            // Apply gravity
+            player.dy += GRAVITY;
+            player.y += player.dy;
+            
+            // Check vertical collisions
+            let onGround = false;
+            
+            platforms.forEach(platform => {
+                // Check if player is above platform and falling
+                if (player.x + player.width > platform.x && 
+                    player.x < platform.x + platform.width && 
+                    player.y + player.height > platform.y && 
+                    player.y + player.height <= platform.y + player.dy) {
+                    
+                    player.dy = 0;
+                    player.y = platform.y - player.height;
+                    player.isJumping = false;
+                    onGround = true;
+                }
+                
+                // Prevent phasing through from below
+                if (player.x + player.width > platform.x && 
+                    player.x < platform.x + platform.width && 
+                    player.y < platform.y + platform.height && 
+                    player.y + player.height >= platform.y + platform.height) {
+                    
+                    player.dy = 0;
+                    player.y = platform.y + platform.height;
+                }
+            });
+            
+            // Ground collision
+            if (player.y + player.height >= canvas.height - 20) {
+                player.dy = 0;
+                player.y = canvas.height - 20 - player.height;
+                player.isJumping = false;
+                onGround = true;
+            }
+            
+            // Prevent player from going off-screen horizontally
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width * 2) player.x = canvas.width * 2 - player.width;
+        }
+        
+        // Handle sword swing animation
+        function updateSword() {
+            if (swordSwinging) {
+                swordAngle += 0.1 * swordDirection;
+                if (swordAngle >= 1) {
+                    swordDirection = -1;
+                } else if (swordAngle <= 0) {
+                    swordSwinging = false;
+                }
+                
+                // Check for boss hits during swing
+                checkBossHit();
+            }
+            
+            if (player.sword.cooldown > 0) {
+                player.sword.cooldown--;
+            }
+        }
+        
+        // Check if sword hits the boss
+        function checkBossHit() {
+            if (player.hitBoss || boss.shieldUp) return;
+            
+            const swordX = player.x + (player.facingRight ? player.width : 0);
+            const swordY = player.y + player.height / 2;
+            
+            const angle = player.facingRight ? 
+                -SWORD_ANGLE + swordAngle * SWORD_ANGLE * 2 : 
+                Math.PI + SWORD_ANGLE - swordAngle * SWORD_ANGLE * 2;
+            
+            const tipX = swordX + Math.cos(angle) * SWORD_RANGE;
+            const tipY = swordY + Math.sin(angle) * SWORD_RANGE;
+            
+            const bossCenterX = boss.x + boss.width / 2;
+            const bossCenterY = boss.y + boss.height / 2;
+            
+            const distance = Math.sqrt(
+                Math.pow(tipX - bossCenterX, 2) + 
+                Math.pow(tipY - bossCenterY, 2)
+            );
+            
+            if (distance < 80) {
+                boss.health -= player.sword.damage;
+                player.hitBoss = true;
+                
+                // Visual effect when boss is hit
+                createParticles(bossCenterX, bossCenterY, '#2196F3', 20);
+                
+                // Check if boss is defeated
+                if (boss.health <= 0) {
+                    victory();
+                } else {
+                    updateUI();
+                }
+            }
+        }
+        
+        // Update boss behavior
+        function updateBoss() {
+            // Boss state machine
+            boss.stateTimer--;
+            
+            if (boss.stateTimer <= 0) {
+                // Transition to next state
+                switch(boss.state) {
+                    case 'idle':
+                        // After idling, charge up an attack
+                        boss.state = 'charging';
+                        boss.stateTimer = 60; // 1 second charge time
+                        boss.shieldUp = false; // Shield drops when charging
+                        break;
+                        
+                    case 'charging':
+                        // After charging, perform attack
+                        boss.state = 'attacking';
+                        boss.stateTimer = 30; // 0.5 second attack time
+                        
+                        // Create 3 lightning targets during attack
+                        boss.lightningTargets = [];
+                        for (let i = 0; i < 3; i++) {
+                            boss.lightningTargets.push({
+                                x: Math.random() * (canvas.width * 2 - 200) + 100,
+                                y: canvas.height - 30,
+                                timer: 30 + i * 10
+                            });
+                        }
+                        break;
+                        
+                    case 'attacking':
+                        // After attacking, become vulnerable
+                        boss.state = 'vulnerable';
+                        boss.stateTimer = 120; // 2 seconds vulnerable
+                        break;
+                        
+                    case 'vulnerable':
+                        // After vulnerable period, reset
+                        boss.state = 'idle';
+                        boss.stateTimer = 90; // 1.5 seconds idle
+                        boss.shieldUp = true; // Shield comes back up
+                        break;
+                }
+            }
+            
+            // Handle lightning strikes during attack
+            if (boss.state === 'attacking') {
+                boss.lightningTargets.forEach(target => {
+                    target.timer--;
+                    if (target.timer <= 0) {
+                        // Strike lightning at target
+                        strikeLightning(target.x, target.y);
+                        
+                        // Check if player was hit
+                        if (Math.abs(player.x + player.width/2 - target.x) < 30 && 
+                            player.y + player.height > canvas.height - 50) {
+                            takeDamage(1);
+                        }
+                    }
+                });
+                
+                // Remove targets that have struck
+                boss.lightningTargets = boss.lightningTargets.filter(t => t.timer > 0);
+            }
+            
+            // Shoot lightning projectiles when shield is up
+            if (boss.shieldUp && boss.lightningCooldown <= 0) {
+                // Shoot at player's position
+                const dx = (player.x + player.width/2) - (boss.x + boss.width/2);
+                const dy = (player.y + player.height/2) - (boss.y + boss.height/2);
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                boss.projectiles.push({
+                    x: boss.x + boss.width/2,
+                    y: boss.y + boss.height/2,
+                    dx: dx/dist * 5,
+                    dy: dy/dist * 5
+                });
+                
+                boss.lightningCooldown = 30; // 0.5 seconds between shots
+            } else {
+                boss.lightningCooldown--;
+            }
+            
+            // Update projectiles
+            for (let i = boss.projectiles.length - 1; i >= 0; i--) {
+                const proj = boss.projectiles[i];
+                proj.x += proj.dx;
+                proj.y += proj.dy;
+                
+                // Check if projectile hits player
+                if (Math.abs(proj.x - (player.x + player.width/2)) < 30 && 
+                    Math.abs(proj.y - (player.y + player.height/2)) < 30) {
+                    takeDamage(0.5);
+                    boss.projectiles.splice(i, 1);
+                }
+                
+                // Remove projectiles that go off-screen
+                if (proj.x < 0 || proj.x > canvas.width * 2 || 
+                    proj.y < 0 || proj.y > canvas.height) {
+                    boss.projectiles.splice(i, 1);
+                }
+            }
+        }
+        
+        // Create lightning strike effect
+        function strikeLightning(x, y) {
+            // Create lightning element
+            const lightning = document.createElement('div');
+            lightning.className = 'lightning';
+            lightning.style.left = `${x - cameraOffset.x}px`;
+            lightning.style.top = `${y - cameraOffset.y - 300}px`;
+            lightning.style.height = '300px';
+            document.body.appendChild(lightning);
+            
+            // Flash effect
+            setTimeout(() => {
+                lightning.style.opacity = '1';
+                setTimeout(() => {
+                    lightning.style.opacity = '0';
+                    setTimeout(() => {
+                        lightning.remove();
+                    }, 300);
+                }, 100);
+            }, 10);
+            
+            // Particles at strike point
+            createParticles(x, y, '#2196F3', 20);
+        }
+        
+        // Handle collisions
+        function handleCollisions() {
+            // Update invulnerability timer
+            if (invulnerable) {
+                invulnerableTimer--;
+                if (invulnerableTimer <= 0) {
+                    invulnerable = false;
+                }
+            }
+        }
+        
+        // Player takes damage
+        function takeDamage(amount = 1) {
+            if (!invulnerable) {
+                lives -= amount;
+                invulnerable = true;
+                invulnerableTimer = 60;
+                if (lives <= 0) {
+                    gameOver();
+                }
+                updateUI();
+                
+                // Visual effect
+                createParticles(
+                    player.x + player.width/2, 
+                    player.y + player.height/2,
+                    '#FF5252', 15
+                );
+            }
+        }
+        
+        // Victory
+        function victory() {
+            gameActive = false;
+            finalVictoryScoreElement.textContent = score;
+            victoryElement.style.display = 'block';
+            
+            // Victory particles
+            for (let i = 0; i < 100; i++) {
+                createParticles(
+                    boss.x + boss.width/2, 
+                    boss.y + boss.height/2,
+                    '#FFEB3B', 1
+                );
+            }
+        }
+        
+        // Game over
+        function gameOver() {
+            isGameOver = true;
+            gameActive = false;
+            finalScoreElement.textContent = score;
+            gameOverElement.style.display = 'block';
+        }
+        
+        // Reset game
+        function resetGame() {
+            // Reset player
+            player.x = 100;
+            player.y = canvas.height - 100;
+            player.dx = 0;
+            player.dy = 0;
+            player.isJumping = false;
+            lives = 3;
+            
+            // Reset boss
+            boss.health = boss.maxHealth;
+            boss.state = 'idle';
+            boss.stateTimer = 90;
+            boss.shieldUp = true;
+            boss.lightningTargets = [];
+            boss.projectiles = [];
+            
+            // Reset game state
+            score = 0;
+            isGameOver = false;
+            gameActive = false;
+            
+            // Clear particles
+            particles = [];
+            
+            // Hide UI elements
+            gameOverElement.style.display = 'none';
+            victoryElement.style.display = 'none';
+            
+            // Show intro
+            bossIntroElement.style.display = 'block';
+            updateUI();
+        }
+        
+        // Main game loop
+        function gameLoop() {
+            if (!gameActive) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Update camera position
+            updateCamera();
+            
+            // Draw game elements
+            drawPlatforms();
+            drawBoss();
+            drawPlayer();
+            drawParticles();
+            
+            // Update game state
+            movePlayer();
+            updateSword();
+            updateBoss();
+            handleCollisions();
+            
+            // Continue loop
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Start the game
+        initGame();
+    </script>
+</body>
+</html>

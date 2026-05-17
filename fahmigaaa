@@ -1,0 +1,2175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Light & Dark: Star Collector & Battle Arena</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            transition: background 1s ease;
+        }
+        .light-theme {
+            background: linear-gradient(to bottom, #56CCF2, #2F80ED);
+        }
+        .dark-theme {
+            background: linear-gradient(to bottom, #0f0c29, #302b63);
+        }
+        canvas {
+            border: 4px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.3);
+            transition: background 1s ease;
+        }
+        .light-canvas {
+            background: linear-gradient(to bottom, #87CEEB, #E0F7FA);
+        }
+        .dark-canvas {
+            background: linear-gradient(to bottom, #1a1a2e, #16213e);
+        }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+        #score, #lives, #level, #stars-collected, #enemies-left {
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 0 20px;
+            font-size: 18px;
+            text-shadow: 1px 1px 2px black;
+            transition: all 0.5s ease;
+        }
+        .dark-ui {
+            background: rgba(255,255,255,0.2) !important;
+        }
+        #game-over, #level-complete, #victory-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+        #game-over h1, #level-complete h1, #victory-screen h1 {
+            color: #FF5252;
+            margin-top: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px black;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 10px 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            background: #388E3C;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+        }
+        button:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #button-container {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        #quit-button {
+            background: #f44336;
+        }
+        #quit-button:hover {
+            background: #d32f2f;
+        }
+        .dark-button {
+            background: #9c27b0 !important;
+        }
+        .dark-button:hover {
+            background: #7b1fa2 !important;
+        }
+        #transition-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            opacity: 0;
+            z-index: 200;
+            pointer-events: none;
+            transition: opacity 1s ease;
+        }
+    </style>
+</head>
+<body class="light-theme">
+    <div id="transition-screen"></div>
+    <div id="ui-container">
+        <div id="score">Score: 0</div>
+        <div id="level">Level: 1</div>
+        <div id="stars-collected">Stars: 0/0</div>
+        <div id="enemies-left" style="display:none">Wolves: 0</div>
+        <div id="lives">Lives: ❤️❤️❤️</div>
+    </div>
+    <div id="game-over">
+        <h1>Game Over</h1>
+        <p id="final-score">Your score: 0</p>
+        <button id="restart-button">Restart Game</button>
+    </div>
+    <div id="level-complete">
+        <h1>Level Complete!</h1>
+        <p id="level-score">Score: 0</p>
+        <button id="next-level-button">Next Level</button>
+    </div>
+    <div id="victory-screen">
+        <h1>Victory!</h1>
+        <p id="victory-score">Final Score: 0</p>
+        <div id="button-container">
+            <button id="quit-button">Quit</button>
+            <button id="next-stage-button" class="dark-button">Enter Dark Side</button>
+        </div>
+    </div>
+    <canvas id="gameCanvas" width="1200" height="600" class="light-canvas"></canvas>
+    <script>
+        // Game constants
+        const GRAVITY = 0.5;
+        const JUMP_POWER = 12;
+        const PLAYER_SPEED = 6;
+        const ENEMY_SPEED = 2;
+        const SWORD_RANGE = 70;
+        const SWORD_ANGLE = Math.PI/4;
+        const STARS_PER_LEVEL = [3, 5, 7]; // Stars for levels 1-3
+        const LEVEL_COUNT = 4;
+        const TRANSITION_DURATION = 2000; // ms for level 3 to 4 transition
+        const BALL_THROW_POWER = 15;
+        const BALL_JUMP_POWER = 8;
+
+        // Game variables
+        let level = 1;
+        let score = 0;
+        let lives = 3;
+        let starsCollected = 0;
+        let totalStars = 0;
+        let enemiesRemaining = 0;
+        let enemiesOnScreen = 0;
+        let maxEnemiesOnScreen = 0;
+        let isGameOver = false;
+        let isLevelComplete = false;
+        let invulnerable = false;
+        let invulnerableTimer = 0;
+        let swordSwinging = false;
+        let swordAngle = 0;
+        let swordDirection = 1;
+        let lastEnemySpawnTime = 0;
+        let enemySpawnInterval = 2000; // ms between spawns
+        let gameActive = true;
+        let isDarkLevel = false;
+        let isTransitioning = false;
+        let transitionStartTime = 0;
+        let originalPlatforms = [];
+        let targetPlatforms = [];
+        let originalClouds = [];
+        let targetClouds = [];
+        let cameraOffset = { x: 0, y: 0 };
+        let isPlayerOnBall = false;
+        let lastBallThrowTime = 0;
+        let ballThrowCooldown = 500; // ms
+
+        // Setup canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const body = document.body;
+        const transitionScreen = document.getElementById('transition-screen');
+
+        // UI elements
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+        const levelElement = document.getElementById('level');
+        const starsElement = document.getElementById('stars-collected');
+        const enemiesElement = document.getElementById('enemies-left');
+        const gameOverElement = document.getElementById('game-over');
+        const levelCompleteElement = document.getElementById('level-complete');
+        const victoryElement = document.getElementById('victory-screen');
+        const finalScoreElement = document.getElementById('final-score');
+        const levelScoreElement = document.getElementById('level-score');
+        const victoryScoreElement = document.getElementById('victory-score');
+        const restartButton = document.getElementById('restart-button');
+        const nextLevelButton = document.getElementById('next-level-button');
+        const nextStageButton = document.getElementById('next-stage-button');
+        const quitButton = document.getElementById('quit-button');
+
+        // Player object with animation properties
+        const player = {
+            x: 100,
+            y: canvas.height - 100,
+            width: 40,
+            height: 60,
+            dx: 0,
+            dy: 0,
+            color: '#FF5252',
+            isJumping: false,
+            facingRight: true,
+            health: 3,
+            sword: {
+                damage: 1,
+                cooldown: 0
+            },
+            hitEnemies: new Set(),
+            animationFrame: 0,
+            maxAnimationFrames: 8,
+            currentAction: 'idle',
+            frameCount: 0,
+            animationSpeed: 0.2
+        };
+
+        // Beach ball object
+        const beachBall = {
+            x: 300,
+            y: 200,
+            radius: 25,
+            dx: 0,
+            dy: 0,
+            color: '#FF9800',
+            stripes: ['#FF5722', '#FFEB3B', '#4CAF50', '#2196F3'],
+            rotation: 0,
+            rotationSpeed: 0,
+            canBounce: true
+        };
+
+        // Birds
+        const birds = [];
+        
+        // Game objects
+        let platforms = [];
+        let enemies = [];
+        let stars = [];
+        let clouds = [];
+        let decorations = [];
+        let pebbles = [];
+        let particles = [];
+        let backgroundElements = [];
+        let spikes = []; // Array to hold spike objects
+
+        // Controls
+        const keys = {
+            right: false,
+            left: false,
+            up: false,
+            attack: false,
+            throw: false
+        };
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            if (!gameActive) return;
+            if (e.key === "ArrowRight" || e.key === "d") keys.right = true;
+            if (e.key === "ArrowLeft" || e.key === "a") keys.left = true;
+            if (e.key === "ArrowUp" || e.key === "w" || e.key === " ") keys.up = true;
+            if (e.key === "f" || e.key === "j") keys.attack = true;
+            if (e.key === "e") keys.throw = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === "ArrowRight" || e.key === "d") keys.right = false;
+            if (e.key === "ArrowLeft" || e.key === "a") keys.left = false;
+            if (e.key === "ArrowUp" || e.key === "w" || e.key === " ") keys.up = false;
+            if (e.key === "f" || e.key === "j") keys.attack = false;
+            if (e.key === "e") keys.throw = false;
+        });
+
+        restartButton.addEventListener('click', () => {
+            gameOverElement.style.display = 'none';
+            resetGame();
+        });
+
+        nextLevelButton.addEventListener('click', () => {
+            levelCompleteElement.style.display = 'none';
+            startNextLevel();
+        });
+
+        nextStageButton.addEventListener('click', () => {
+            victoryElement.style.display = 'none';
+            startNextLevel();
+        });
+
+        quitButton.addEventListener('click', () => {
+            victoryElement.style.display = 'none';
+            resetGame();
+        });
+
+        // Initialize game
+        function initGame() {
+            createClouds();
+            createBackgroundElements();
+            createBirds();
+            setupLevel(level);
+            gameLoop();
+        }
+
+        // Create background clouds
+        function createClouds() {
+            clouds = [];
+            const cloudCount = isDarkLevel ? 10 : 15;
+            const cloudColor = isDarkLevel ? 'rgba(50,50,70,0.7)' : 'rgba(255,255,255,0.8)';
+            for (let i = 0; i < cloudCount; i++) {
+                clouds.push({
+                    x: Math.random() * canvas.width * 2,
+                    y: Math.random() * canvas.height * 0.4,
+                    width: 80 + Math.random() * 120,
+                    speed: 0.1 + Math.random() * 0.7,
+                    color: cloudColor,
+                    parallax: 0.2 + Math.random() * 0.3
+                });
+            }
+            originalClouds = JSON.parse(JSON.stringify(clouds));
+        }
+
+        // Create background elements (mountains, trees, etc.)
+        function createBackgroundElements() {
+            backgroundElements = [];
+            const elementCount = isDarkLevel ? 5 : 8;
+            
+            for (let i = 0; i < elementCount; i++) {
+                const type = Math.random() > 0.5 ? 'mountain' : 'hills';
+                backgroundElements.push({
+                    x: Math.random() * canvas.width * 3,
+                    y: canvas.height - 100 - Math.random() * 50,
+                    width: 200 + Math.random() * 300,
+                    height: 100 + Math.random() * 150,
+                    color: isDarkLevel ? 
+                        `rgba(${Math.floor(30 + Math.random() * 30)}, ${Math.floor(20 + Math.random() * 20)}, ${Math.floor(40 + Math.random() * 20)}, 0.8)` :
+                        `rgba(${Math.floor(50 + Math.random() * 50)}, ${Math.floor(70 + Math.random() * 50)}, ${Math.floor(90 + Math.random() * 50)}, 0.6)`,
+                    speed: 0.2 + Math.random() * 0.3,
+                    type: type,
+                    parallax: 0.1 + Math.random() * 0.2
+                });
+            }
+        }
+
+        // Create birds
+        function createBirds() {
+            birds.length = 0; // Clear existing birds
+            const birdCount = isDarkLevel ? 3 : 6;
+            
+            for (let i = 0; i < birdCount; i++) {
+                birds.push({
+                    x: Math.random() * canvas.width * 2,
+                    y: 50 + Math.random() * 150,
+                    width: 30,
+                    height: 20,
+                    speed: 1 + Math.random() * 2,
+                    color: isDarkLevel ? '#555' : '#333',
+                    wingPosition: 0,
+                    wingDirection: 1,
+                    amplitude: 5 + Math.random() * 10,
+                    frequency: 0.05 + Math.random() * 0.1
+                });
+            }
+        }
+
+        // Draw spikes
+        function drawSpikes() {
+            spikes.forEach(spike => {
+                ctx.fillStyle = '#FF0000';
+                ctx.beginPath();
+                
+                // Draw triangle spike
+                if (spike.direction === 'up') {
+                    ctx.moveTo(spike.x - cameraOffset.x, spike.y - cameraOffset.y + spike.height);
+                    ctx.lineTo(spike.x - cameraOffset.x + spike.width/2, spike.y - cameraOffset.y);
+                    ctx.lineTo(spike.x - cameraOffset.x + spike.width, spike.y - cameraOffset.y + spike.height);
+                } else if (spike.direction === 'down') {
+                    ctx.moveTo(spike.x - cameraOffset.x, spike.y - cameraOffset.y);
+                    ctx.lineTo(spike.x - cameraOffset.x + spike.width/2, spike.y - cameraOffset.y + spike.height);
+                    ctx.lineTo(spike.x - cameraOffset.x + spike.width, spike.y - cameraOffset.y);
+                } else if (spike.direction === 'left') {
+                    ctx.moveTo(spike.x - cameraOffset.x + spike.width, spike.y - cameraOffset.y);
+                    ctx.lineTo(spike.x - cameraOffset.x, spike.y - cameraOffset.y + spike.height/2);
+                    ctx.lineTo(spike.x - cameraOffset.x + spike.width, spike.y - cameraOffset.y + spike.height);
+                } else if (spike.direction === 'right') {
+                    ctx.moveTo(spike.x - cameraOffset.x, spike.y - cameraOffset.y);
+                    ctx.lineTo(spike.x - cameraOffset.x + spike.width, spike.y - cameraOffset.y + spike.height/2);
+                    ctx.lineTo(spike.x - cameraOffset.x, spike.y - cameraOffset.y + spike.height);
+                }
+                
+                ctx.closePath();
+                ctx.fill();
+                
+                // Add some shading
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fill();
+            });
+        }
+
+        // Check spike collisions
+        function checkSpikeCollisions() {
+            spikes.forEach(spike => {
+                if (invulnerable) return;
+                
+                let spikeTop, spikeBottom, spikeLeft, spikeRight;
+                
+                if (spike.direction === 'up') {
+                    spikeTop = spike.y;
+                    spikeBottom = spike.y + spike.height;
+                    spikeLeft = spike.x;
+                    spikeRight = spike.x + spike.width;
+                    
+                    // Check if player is above the spike and falling into it
+                    if (player.x + player.width > spikeLeft && 
+                        player.x < spikeRight && 
+                        player.y + player.height > spikeTop && 
+                        player.y + player.height < spikeBottom + player.dy) {
+                        
+                        takeDamage(1);
+                        // Knockback effect
+                        player.dy = -JUMP_POWER * 0.7;
+                        createParticles(
+                            player.x + player.width/2, 
+                            player.y + player.height/2,
+                            '#FF0000', 10
+                        );
+                    }
+                } 
+                else if (spike.direction === 'down') {
+                    spikeTop = spike.y;
+                    spikeBottom = spike.y + spike.height;
+                    spikeLeft = spike.x;
+                    spikeRight = spike.x + spike.width;
+                    
+                    // Check if player hits spike from below
+                    if (player.x + player.width > spikeLeft && 
+                        player.x < spikeRight && 
+                        player.y < spikeBottom && 
+                        player.y + player.height > spikeTop) {
+                        
+                        takeDamage(1);
+                        // Knockback effect
+                        player.dy = JUMP_POWER * 0.5;
+                        createParticles(
+                            player.x + player.width/2, 
+                            player.y + player.height/2,
+                            '#FF0000', 10
+                        );
+                    }
+                }
+                else if (spike.direction === 'left') {
+                    spikeLeft = spike.x;
+                    spikeRight = spike.x + spike.width;
+                    spikeTop = spike.y;
+                    spikeBottom = spike.y + spike.height;
+                    
+                    // Check if player hits spike from the right
+                    if (player.x + player.width > spikeLeft && 
+                        player.x < spikeRight && 
+                        player.y + player.height > spikeTop && 
+                        player.y < spikeBottom) {
+                        
+                        takeDamage(1);
+                        // Knockback effect
+                        player.dx = 8;
+                        player.dy = -JUMP_POWER * 0.5;
+                        createParticles(
+                            player.x + player.width/2, 
+                            player.y + player.height/2,
+                            '#FF0000', 10
+                        );
+                    }
+                }
+                else if (spike.direction === 'right') {
+                    spikeLeft = spike.x;
+                    spikeRight = spike.x + spike.width;
+                    spikeTop = spike.y;
+                    spikeBottom = spike.y + spike.height;
+                    
+                    // Check if player hits spike from the left
+                    if (player.x + player.width > spikeLeft && 
+                        player.x < spikeRight && 
+                        player.y + player.height > spikeTop && 
+                        player.y < spikeBottom) {
+                        
+                        takeDamage(1);
+                        // Knockback effect
+                        player.dx = -8;
+                        player.dy = -JUMP_POWER * 0.5;
+                        createParticles(
+                            player.x + player.width/2, 
+                            player.y + player.height/2,
+                            '#FF0000', 10
+                        );
+                    }
+                }
+            });
+        }
+
+        // Setup level
+        function setupLevel(lvl) {
+            isDarkLevel = lvl === 4;
+            
+            // Update theme
+            if (isDarkLevel) {
+                body.className = 'dark-theme';
+                canvas.className = 'dark-canvas';
+                document.querySelectorAll('#score, #lives, #level, #stars-collected, #enemies-left').forEach(el => {
+                    el.classList.add('dark-ui');
+                });
+            } else {
+                body.className = 'light-theme';
+                canvas.className = 'light-canvas';
+                document.querySelectorAll('#score, #lives, #level, #stars-collected, #enemies-left').forEach(el => {
+                    el.classList.remove('dark-ui');
+                });
+            }
+
+            platforms = [];
+            enemies = [];
+            stars = [];
+            decorations = [];
+            pebbles = [];
+            particles = [];
+            spikes = []; // Reset spikes
+
+            player.x = 100;
+            player.y = canvas.height - 100;
+            player.dx = 0;
+            player.dy = 0;
+            player.isJumping = false;
+            player.hitEnemies.clear();
+            isLevelComplete = false;
+            starsCollected = 0;
+            gameActive = true;
+            cameraOffset = { x: 0, y: 0 };
+            isPlayerOnBall = false;
+
+            // Reset beach ball position
+            beachBall.x = 300;
+            beachBall.y = 200;
+            beachBall.dx = 0;
+            beachBall.dy = 0;
+            beachBall.canBounce = true;
+
+            // Show/hide UI elements based on level type
+            if (isDarkLevel) {
+                enemiesElement.style.display = 'block';
+                starsElement.style.display = 'none';
+                enemiesRemaining = 20;
+                maxEnemiesOnScreen = 5;
+                enemiesOnScreen = 0;
+            } else {
+                enemiesElement.style.display = 'none';
+                starsElement.style.display = 'block';
+                totalStars = STARS_PER_LEVEL[lvl - 1];
+                enemiesRemaining = 0;
+            }
+
+            // Common platforms
+            platforms.push(
+                { x: 0, y: canvas.height - 20, width: canvas.width * 2, height: 20, color: isDarkLevel ? '#2c3e50' : '#8BC34A', type: 'ground' }
+            );
+
+            // Create pebbles
+            const pebbleColor = isDarkLevel ? '#555' : '#9E9E9E';
+            for (let i = 0; i < 100; i++) {
+                pebbles.push({
+                    x: Math.random() * canvas.width * 2,
+                    y: canvas.height - 25 + Math.random() * 5,
+                    radius: 3 + Math.random() * 8,
+                    color: pebbleColor
+                });
+            }
+
+            // Level-specific setups
+            if (lvl === 1) {
+                // Level 1 - Basic star collection with spikes
+                platforms.push(
+                    { x: 150, y: 450, width: 120, height: 20, color: '#795548', type: 'platform', borderRadius: 10 },
+                    { x: 350, y: 350, width: 80, height: 20, color: '#795548', type: 'platform', borderRadius: 8 },
+                    { x: 550, y: 250, width: 150, height: 20, color: '#795548', type: 'platform', borderRadius: 12 }
+                );
+
+                // Stars
+                stars.push(
+                    { x: 210, y: 420, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 390, y: 320, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 625, y: 220, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 }
+                );
+
+                // Spikes (pointing up)
+                spikes.push(
+                    { x: 250, y: 420, width: 15, height: 30, direction: 'up' },
+                    { x: 400, y: 320, width: 15, height: 30, direction: 'up' },
+                    { x: 500, y: 550, width: 15, height: 30, direction: 'up' }
+                );
+
+                // Decorations
+                decorations.push(
+                    { x: 50, y: canvas.height - 120, width: 40, height: 100, color: '#5D4037', type: 'tree' },
+                    { x: 300, y: canvas.height - 120, width: 40, height: 100, color: '#5D4037', type: 'tree' }
+                );
+
+                // Beach ball position
+                beachBall.x = 700;
+                beachBall.y = 550;
+            } else if (lvl === 2) {
+                // Level 2 - More challenging with moving platforms and spikes
+                platforms.push(
+                    { x: 120, y: 500, width: 90, height: 20, color: '#795548', type: 'platform', borderRadius: 8, moving: true, moveX: true, startX: 120, endX: 300, speed: 1 },
+                    { x: 300, y: 400, width: 100, height: 20, color: '#795548', type: 'platform', borderRadius: 7 },
+                    { x: 430, y: 300, width: 100, height: 20, color: '#795548', type: 'platform', borderRadius: 10 },
+                    { x: 597, y: 400, width: 20, height: 20, color: '#795548', type: 'platform', borderRadius: 7 },
+                    { x: 680, y: 400, width: 60, height: 20, color: '#795548', type: 'platform', borderRadius: 5 },
+                    { x: 830, y: 300, width: 110, height: 20, color: '#795548', type: 'platform', borderRadius: 12 }
+                );
+
+                // Stars
+                stars.push(
+                    { x: 165, y: 470, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 315, y: 370, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 480, y: 270, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 710, y: 370, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 885, y: 270, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 }
+                );
+
+                // Spikes (pointing up and down)
+                spikes.push(
+                    { x: 315, y: 470, width: 15, height: 30, direction: 'up' },
+                    { x: 600, y: 375, width: 15, height: 30, direction: 'up' },
+                    { x: 450, y: 320, width: 15, height: 30, direction: 'down' },
+                    { x: 850, y: 270, width: 15, height: 30, direction: 'up' }
+                );
+
+                // Decorations
+                decorations.push(
+                    { x: 200, y: canvas.height - 50, width: 30, height: 30, color: '#9E9E9E', type: 'rock' },
+                    { x: 500, y: canvas.height - 50, width: 40, height: 40, color: '#9E9E9E', type: 'rock' }
+                );
+
+                // Beach ball position
+                beachBall.x = 400;
+                beachBall.y = 450;
+            } else if (lvl === 3) {
+                // Level 3 - Advanced with narrow platforms and spikes everywhere
+                platforms.push(
+                    { x: 180, y: 500, width: 70, height: 20, color: '#795548', type: 'platform', borderRadius: 7 },
+                    { x: 330, y: 450, width: 90, height: 20, color: '#795548', type: 'platform', borderRadius: 8 },
+                    { x: 480, y: 390, width: 90, height: 20, color: '#795548', type: 'platform', borderRadius: 9 },
+                    { x: 630, y: 470, width: 70, height: 20, color: '#795548', type: 'platform', borderRadius: 7 },
+                    { x: 780, y: 370, width: 80, height: 20, color: '#795548', type: 'platform', borderRadius: 8 },
+                    { x: 930, y: 250, width: 90, height: 20, color: '#795548', type: 'platform', borderRadius: 9 }
+                );
+
+                // Stars
+                stars.push(
+                    { x: 215, y: 470, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 370, y: 420, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 525, y: 370, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 665, y: 320, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 820, y: 270, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 975, y: 220, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 },
+                    { x: 1100, y: 150, radius: 15, collected: false, floatOffset: Math.random() * Math.PI * 2 }
+                );
+
+                // Spikes (all directions)
+                spikes.push(
+                    { x: 185, y: 470, width: 15, height: 30, direction: 'up' },
+                    { x: 300, y: 450, width: 30, height: 15, direction: 'left' },
+                    { x: 400, y: 420, width: 15, height: 30, direction: 'up' },
+                    { x: 800, y: 340, width: 15, height: 30, direction: 'up' },
+                    { x: 1000, y: 220, width: 15, height: 30, direction: 'up' }
+);
+
+                // Decorations
+                decorations.push(
+                    { x: 150, y: canvas.height - 40, width: 60, height: 20, color: '#4CAF50', type: 'bush' },
+                    { x: 650, y: canvas.height - 40, width: 70, height: 20, color: '#4CAF50', type: 'bush' }
+                );
+
+                // Beach ball position
+                beachBall.x = 600;
+                beachBall.y = 200;
+            } else if (lvl === 4) {
+                // Level 4 - Battle Arena (Dark Side)
+                platforms.push(
+                    { x: 180, y: 500, width: 90, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 9 },
+                    { x: 380, y: 400, width: 70, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 7 },
+                    { x: 580, y: 300, width: 80, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 8 },
+                    { x: 780, y: 400, width: 90, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 9 },
+                    { x: 980, y: 500, width: 70, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 7 }
+                );
+
+                // Battlefield decorations
+                decorations.push(
+                    { x: 100, y: canvas.height - 60, width: 40, height: 40, color: '#555', type: 'barrel' },
+                    { x: 900, y: canvas.height - 60, width: 40, height: 40, color: '#555', type: 'barrel' },
+                    { x: 500, y: canvas.height - 100, width: 200, height: 80, color: '#222', type: 'fort' }
+                );
+
+                // Beach ball position
+                beachBall.x = 400;
+                beachBall.y = 450;
+
+                // Spawn initial enemies
+                spawnEnemy();
+                spawnEnemy();
+            }
+
+            // Save original platforms for transition
+            if (lvl === 3) {
+                originalPlatforms = JSON.parse(JSON.stringify(platforms));
+                // Create target platforms for level 4 transition
+                targetPlatforms = [
+                    { x: 180, y: 500, width: 90, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 9 },
+                    { x: 380, y: 400, width: 70, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 7 },
+                    { x: 580, y: 300, width: 80, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 8 },
+                    { x: 780, y: 400, width: 90, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 9 },
+                    { x: 980, y: 500, width: 70, height: 20, color: '#3a3a3a', type: 'platform', borderRadius: 7 }
+                ];
+            }
+
+            // Create background elements and birds for this level
+            createBackgroundElements();
+            createBirds();
+
+            updateUI();
+        }
+
+        // Update moving platforms
+        function updateMovingPlatforms() {
+            platforms.forEach(platform => {
+                if (platform.moving) {
+                    if (platform.moveX) {
+                        platform.x += platform.speed;
+                        if (platform.x > platform.endX || platform.x < platform.startX) {
+                            platform.speed *= -1;
+                        }
+                    }
+                    if (platform.moveY) {
+                        platform.y += platform.speed;
+                        if (platform.y > platform.endY || platform.y < platform.startY) {
+                            platform.speed *= -1;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Spawn a new enemy
+        function spawnEnemy() {
+            if (enemiesRemaining <= 0 || enemiesOnScreen >= maxEnemiesOnScreen) return;
+            
+            const now = Date.now();
+            if (now - lastEnemySpawnTime < enemySpawnInterval) return;
+            
+            lastEnemySpawnTime = now;
+            enemiesRemaining--;
+            enemiesOnScreen++;
+
+            // Random side (0 = left, 1 = right)
+            const side = Math.floor(Math.random() * 2);
+            
+            const enemy = {
+                x: side === 0 ? -50 : canvas.width + 50,
+                y: canvas.height - 70,
+                width: 40,
+                height: 40,
+                dx: side === 0 ? ENEMY_SPEED : -ENEMY_SPEED,
+                color: '#555',
+                health: 2,
+                type: 'wolf',
+                direction: side === 0 ? 1 : -1,
+                attackCooldown: 0,
+                attackRange: 60,
+                animationFrame: 0,
+                maxAnimationFrames: 8
+            };
+            
+            enemies.push(enemy);
+            updateUI();
+        }
+
+        // Create particles
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    radius: 2 + Math.random() * 4,
+                    color: color,
+                    dx: (Math.random() - 0.5) * 5,
+                    dy: (Math.random() - 0.5) * 5,
+                    life: 30 + Math.random() * 30
+                });
+            }
+        }
+
+        // Update UI elements
+        function updateUI() {
+            scoreElement.textContent = `Score: ${score}`;
+            livesElement.textContent = `Lives: ${'❤️'.repeat(lives)}`;
+            levelElement.textContent = `Level: ${level}`;
+            
+            if (isDarkLevel) {
+                enemiesElement.textContent = `Wolves: ${enemiesRemaining + enemiesOnScreen}`;
+            } else {
+                starsElement.textContent = `Stars: ${starsCollected}/${totalStars}`;
+            }
+        }
+
+        // Draw player with animation
+        function drawPlayer() {
+            // Update animation frame based on player state
+            if (player.dy < 0) {
+                player.currentAction = 'jump';
+            } else if (player.dy > 0 && !player.isJumping) {
+                player.currentAction = 'fall';
+            } else if (keys.right || keys.left) {
+                player.currentAction = 'run';
+            } else {
+                player.currentAction = 'idle';
+            }
+
+            // Update animation frame
+            player.frameCount += player.animationSpeed;
+            player.animationFrame = Math.floor(player.frameCount) % player.maxAnimationFrames;
+
+            // Draw player body
+            ctx.fillStyle = invulnerable ? 'rgba(255, 82, 82, 0.5)' : player.color;
+            ctx.beginPath();
+            
+            // Add some animation to the player shape
+            const walkOffset = Math.sin(player.animationFrame * Math.PI * 2 / player.maxAnimationFrames) * 5;
+            ctx.roundRect(
+                player.x - cameraOffset.x, 
+                player.y - cameraOffset.y + (player.isJumping ? 0 : walkOffset),
+                player.width, 
+                player.height - (player.isJumping ? 0 : walkOffset),
+                10
+            );
+            ctx.fill();
+
+            // Draw player face
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(
+                player.x - cameraOffset.x + (player.facingRight ? 30 : 10), 
+                player.y - cameraOffset.y + 20 + (player.isJumping ? 0 : walkOffset),
+                8, 0, Math.PI * 2
+            );
+            ctx.fill();
+
+            // Draw sword if attacking
+            if (swordSwinging || player.sword.cooldown > 0) {
+                ctx.save();
+                ctx.translate(
+                    player.x - cameraOffset.x + (player.facingRight ? player.width : 0),
+                    player.y - cameraOffset.y + player.height / 2 + (player.isJumping ? 0 : walkOffset)
+                );
+                
+                // Rotate sword based on swing progress
+                const angle = player.facingRight ? 
+                    -SWORD_ANGLE + swordAngle * SWORD_ANGLE * 2 : 
+                    Math.PI + SWORD_ANGLE - swordAngle * SWORD_ANGLE * 2;
+                ctx.rotate(angle);
+                
+                // Draw sword with animation
+                ctx.fillStyle = isDarkLevel ? '#666' : '#BDBDBD';
+                ctx.fillRect(0, -3, SWORD_RANGE, 6);
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(-10, -5, 10, 10);
+                ctx.restore();
+            }
+        }
+
+        // Draw platforms with improved collision
+        function drawPlatforms() {
+            platforms.forEach(platform => {
+                ctx.fillStyle = platform.color;
+                if (platform.borderRadius) {
+                    ctx.beginPath();
+                    ctx.roundRect(platform.x - cameraOffset.x, platform.y - cameraOffset.y, platform.width, platform.height, platform.borderRadius);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(platform.x - cameraOffset.x, platform.y - cameraOffset.y, platform.width, platform.height);
+                }
+                
+                // Add some texture
+                ctx.strokeStyle = isDarkLevel ? '#222' : '#5D4037';
+                ctx.lineWidth = 2;
+                for (let x = platform.x - cameraOffset.x + 5; x < platform.x - cameraOffset.x + platform.width; x += 15) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, platform.y - cameraOffset.y + 2);
+                    ctx.lineTo(x, platform.y - cameraOffset.y + platform.height - 2);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        // Draw pebbles
+        function drawPebbles() {
+            pebbles.forEach(pebble => {
+                ctx.fillStyle = pebble.color;
+                ctx.beginPath();
+                ctx.arc(pebble.x - cameraOffset.x, pebble.y - cameraOffset.y, pebble.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Draw stars
+        function drawStars() {
+            const time = Date.now() * 0.002;
+            stars.forEach(star => {
+                if (star.collected) return;
+                
+                // Floating animation
+                const floatY = star.y + Math.sin(time + star.floatOffset) * 5;
+                
+                ctx.save();
+                ctx.shadowColor = 'rgba(255, 255, 0, 0.7)';
+                ctx.shadowBlur = 10;
+                
+                // Star body
+                ctx.fillStyle = 'gold';
+                ctx.beginPath();
+                
+                // Draw star shape
+                const spikes = 5;
+                const outerRadius = star.radius;
+                const innerRadius = star.radius * 0.5;
+                
+                for (let i = 0; i < spikes * 2; i++) {
+                    const angle = i * Math.PI / spikes;
+                    const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                    ctx.lineTo(
+                        star.x - cameraOffset.x + Math.cos(angle) * radius,
+                        floatY - cameraOffset.y + Math.sin(angle) * radius
+                    );
+                }
+                ctx.closePath();
+                ctx.fill();
+                
+                // Star shine
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(star.x - cameraOffset.x - 5, floatY - cameraOffset.y - 5, star.radius/3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        // Draw enemies
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                // Update animation frame
+                enemy.animationFrame = (enemy.animationFrame + 0.1) % enemy.maxAnimationFrames;
+                const walkOffset = Math.sin(enemy.animationFrame * Math.PI * 2 / enemy.maxAnimationFrames) * 3;
+                
+                // Enemy body
+                ctx.fillStyle = enemy.type === 'wolf' ? '#555' : '#795548';
+                ctx.beginPath();
+                ctx.roundRect(
+                    enemy.x - cameraOffset.x, 
+                    enemy.y - cameraOffset.y + walkOffset, 
+                    enemy.width, 
+                    enemy.height - walkOffset, 
+                    5
+                );
+                ctx.fill();
+                
+                // Enemy eyes (different for wolves)
+                ctx.fillStyle = '#FF5252';
+                if (enemy.type === 'wolf') {
+                    // Wolf face
+                    ctx.beginPath();
+                    ctx.arc(
+                        enemy.x - cameraOffset.x + (enemy.direction > 0 ? 10 : enemy.width - 10),
+                        enemy.y - cameraOffset.y + 15 + walkOffset,
+                        5, 0, Math.PI * 2
+                    );
+                    ctx.arc(
+                        enemy.x - cameraOffset.x + (enemy.direction > 0 ? 30 : enemy.width - 30),
+                        enemy.y - cameraOffset.y + 15 + walkOffset,
+                        5, 0, Math.PI * 2
+                    );
+                    ctx.fill();
+                    
+                    // Wolf health indicator
+                    if (enemy.health < 2) {
+                        ctx.fillStyle = enemy.health === 1 ? '#FFA000' : '#FF5252';
+                        ctx.fillRect(
+                            enemy.x - cameraOffset.x + 5, 
+                            enemy.y - cameraOffset.y - 10 + walkOffset, 
+                            30, 5
+                        );
+                    }
+                } else {
+                    // Regular enemy eyes
+                    ctx.fillRect(
+                        enemy.x - cameraOffset.x + (enemy.dx > 0 ? 10 : enemy.width - 20),
+                        enemy.y - cameraOffset.y + 10 + walkOffset,
+                        10, 10
+                    );
+                    ctx.fillRect(
+                        enemy.x - cameraOffset.x + (enemy.dx > 0 ? 30 : enemy.width - 40),
+                        enemy.y - cameraOffset.y + 10 + walkOffset,
+                        10, 10
+                    );
+                }
+            });
+        }
+
+        // Draw beach ball
+        function drawBeachBall() {
+            ctx.save();
+            
+            // Apply rotation
+            ctx.translate(beachBall.x - cameraOffset.x, beachBall.y - cameraOffset.y);
+            ctx.rotate(beachBall.rotation);
+            
+            // Draw ball body
+            ctx.fillStyle = beachBall.color;
+            ctx.beginPath();
+            ctx.arc(0, 0, beachBall.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw stripes
+            for (let i = 0; i < beachBall.stripes.length; i++) {
+                ctx.fillStyle = beachBall.stripes[i];
+                ctx.beginPath();
+                ctx.arc(0, 0, beachBall.radius, 
+                    (i / beachBall.stripes.length) * Math.PI * 2, 
+                    ((i + 1) / beachBall.stripes.length) * Math.PI * 2);
+                ctx.lineTo(0, 0);
+                ctx.closePath();
+                ctx.fill();
+            }
+            
+            // Draw details
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(0, 0, beachBall.radius * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, beachBall.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+
+        // Draw background elements
+        function drawBackgroundElements() {
+            backgroundElements.forEach(element => {
+                const x = element.x - cameraOffset.x * element.parallax;
+                const y = element.y - cameraOffset.y * element.parallax;
+                
+                ctx.fillStyle = element.color;
+                
+                if (element.type === 'mountain') {
+                    // Draw mountain
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + element.width * 0.3, y - element.height);
+                    ctx.lineTo(x + element.width * 0.7, y - element.height * 0.7);
+                    ctx.lineTo(x + element.width, y);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Draw hills
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    for (let i = 0; i < element.width; i += 20) {
+                        const heightVariation = Math.sin(i / 30) * 20;
+                        ctx.lineTo(x + i, y - element.height / 2 - heightVariation);
+                    }
+                    ctx.lineTo(x + element.width, y);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+        }
+
+        // Draw birds
+        function drawBirds() {
+            const time = Date.now() * 0.001;
+            
+            birds.forEach(bird => {
+                // Update wing animation
+                bird.wingPosition += bird.wingDirection * 0.2;
+                if (bird.wingPosition > 1 || bird.wingPosition < -1) {
+                    bird.wingDirection *= -1;
+                }
+                
+                // Calculate bird position with parallax
+                const x = bird.x - cameraOffset.x * 0.1;
+                const y = bird.y + Math.sin(time * bird.frequency) * bird.amplitude;
+                
+                // Draw bird body
+                ctx.fillStyle = bird.color;
+                ctx.beginPath();
+                ctx.arc(x, y, bird.width / 3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw wings
+                ctx.beginPath();
+                ctx.moveTo(x + bird.width / 3, y);
+                ctx.quadraticCurveTo(
+                    x + bird.width / 2, 
+                    y - bird.height / 2 - bird.wingPosition * 5, 
+                    x + bird.width / 3 * 2, 
+                    y
+                );
+                ctx.quadraticCurveTo(
+                    x + bird.width / 2, 
+                    y + bird.height / 2 + bird.wingPosition * 5, 
+                    x + bird.width / 3, 
+                    y
+                );
+                ctx.fill();
+                
+                // Move bird
+                bird.x += bird.speed;
+                if (bird.x > canvas.width + cameraOffset.x + 100) {
+                    bird.x = -50 - cameraOffset.x;
+                }
+            });
+        }
+
+        // Draw particles
+        function drawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x - cameraOffset.x, p.y - cameraOffset.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Update particle
+                p.x += p.dx;
+                p.y += p.dy;
+                p.life--;
+                
+                // Remove dead particles
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // Draw clouds
+        function drawClouds() {
+            clouds.forEach(cloud => {
+                ctx.fillStyle = cloud.color;
+                
+                // Main cloud body
+                ctx.beginPath();
+                ctx.arc(
+                    cloud.x - cameraOffset.x * cloud.parallax, 
+                    cloud.y - cameraOffset.y * cloud.parallax, 
+                    cloud.width / 3, 0, Math.PI * 2
+                );
+                ctx.arc(
+                    cloud.x - cameraOffset.x * cloud.parallax + cloud.width / 3, 
+                    cloud.y - cameraOffset.y * cloud.parallax - 10, 
+                    cloud.width / 4, 0, Math.PI * 2
+                );
+                ctx.arc(
+                    cloud.x - cameraOffset.x * cloud.parallax + cloud.width / 2, 
+                    cloud.y - cameraOffset.y * cloud.parallax, 
+                    cloud.width / 3, 0, Math.PI * 2
+                );
+                ctx.arc(
+                    cloud.x - cameraOffset.x * cloud.parallax + cloud.width / 3, 
+                    cloud.y - cameraOffset.y * cloud.parallax + 10, 
+                    cloud.width / 4, 0, Math.PI * 2
+                );
+                ctx.fill();
+                
+                // Move clouds
+                cloud.x += cloud.speed;
+                if (cloud.x > canvas.width + cameraOffset.x + cloud.width) {
+                    cloud.x = -cloud.width - cameraOffset.x;
+                }
+            });
+        }
+        
+        // Draw decorations
+        function drawDecorations() {
+            decorations.forEach(item => {
+                ctx.fillStyle = item.color;
+                
+                if (item.type === 'tree') {
+                    // Draw tree trunk
+                    ctx.fillRect(
+                        item.x - cameraOffset.x, 
+                        item.y - cameraOffset.y, 
+                        item.width, 
+                        item.height
+                    );
+                    
+                    // Draw leaves
+                    ctx.fillStyle = isDarkLevel ? '#2d572c' : '#4CAF50';
+                    ctx.beginPath();
+                    ctx.arc(
+                        item.x - cameraOffset.x + item.width/2, 
+                        item.y - cameraOffset.y - 20, 
+                        40, 0, Math.PI * 2
+                    );
+                    ctx.fill();
+                } else if (item.type === 'rock') {
+                    // Draw rock
+                    ctx.beginPath();
+                    ctx.arc(
+                        item.x - cameraOffset.x + item.width/2, 
+                        item.y - cameraOffset.y + item.height/2, 
+                        item.width/2, 0, Math.PI * 2
+                    );
+                    ctx.fill();
+                } else if (item.type === 'bush') {
+                    // Draw bush
+                    ctx.fillStyle = isDarkLevel ? '#2d572c' : '#4CAF50';
+                    ctx.beginPath();
+                    ctx.arc(
+                        item.x - cameraOffset.x + 15, 
+                        item.y - cameraOffset.y + 10, 
+                        15, 0, Math.PI * 2
+                    );
+                    ctx.arc(
+                        item.x - cameraOffset.x + 35, 
+                        item.y - cameraOffset.y + 10, 
+                        15, 0, Math.PI * 2
+                    );
+                    ctx.arc(
+                        item.x - cameraOffset.x + 55, 
+                        item.y - cameraOffset.y + 10, 
+                        15, 0, Math.PI * 2
+                    );
+                    ctx.arc(
+                        item.x - cameraOffset.x + 25, 
+                        item.y - cameraOffset.y, 
+                        15, 0, Math.PI * 2
+                    );
+                    ctx.arc(
+                        item.x - cameraOffset.x + 45, 
+                        item.y - cameraOffset.y, 
+                        15, 0, Math.PI * 2
+                    );
+                    ctx.fill();
+                } else if (item.type === 'barrel') {
+                    // Draw barrel
+                    ctx.fillRect(
+                        item.x - cameraOffset.x, 
+                        item.y - cameraOffset.y, 
+                        item.width, 
+                        item.height
+                    );
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        item.x - cameraOffset.x, 
+                        item.y - cameraOffset.y, 
+                        item.width, 
+                        item.height
+                    );
+                    // Barrel bands
+                    ctx.strokeStyle = '#555';
+                    ctx.beginPath();
+                    ctx.moveTo(item.x - cameraOffset.x, item.y - cameraOffset.y + item.height/3);
+                    ctx.lineTo(item.x - cameraOffset.x + item.width, item.y - cameraOffset.y + item.height/3);
+                    ctx.moveTo(item.x - cameraOffset.x, item.y - cameraOffset.y + item.height*2/3);
+                    ctx.lineTo(item.x - cameraOffset.x + item.width, item.y - cameraOffset.y + item.height*2/3);
+                    ctx.stroke();
+                } else if (item.type === 'fort') {
+                    // Draw fort
+                    ctx.fillRect(
+                        item.x - cameraOffset.x, 
+                        item.y - cameraOffset.y, 
+                        item.width, 
+                        item.height
+                    );
+                    
+                    // Draw fort details
+                    ctx.fillStyle = '#444';
+                    // Draw battlements
+                    const battlementWidth = 20;
+                    for (let i = 0; i < item.width / battlementWidth; i++) {
+                        ctx.fillRect(
+                            item.x - cameraOffset.x + i * battlementWidth, 
+                            item.y - cameraOffset.y, 
+                            battlementWidth/2, 
+                            10
+                        );
+                    }
+                    
+                    // Draw door
+                    ctx.fillStyle = '#5D4037';
+                    ctx.fillRect(
+                        item.x - cameraOffset.x + item.width/2 - 15, 
+                        item.y - cameraOffset.y + item.height - 40, 
+                        30, 
+                        40
+                    );
+                }
+            });
+        }
+
+        // Draw a sun or moon
+        function drawSunOrMoon() {
+            if (isDarkLevel) {
+                // Draw moon
+                ctx.fillStyle = '#e0e0e0';
+                ctx.beginPath();
+                ctx.arc(
+                    100 - cameraOffset.x * 0.05, 
+                    100 - cameraOffset.y * 0.05, 
+                    40, 0, Math.PI * 2
+                );
+                ctx.fill();
+                
+                // Moon craters
+                ctx.fillStyle = '#aaa';
+                ctx.beginPath();
+                ctx.arc(
+                    110 - cameraOffset.x * 0.05, 
+                    90 - cameraOffset.y * 0.05, 
+                    8, 0, Math.PI * 2
+                );
+                ctx.arc(
+                    90 - cameraOffset.x * 0.05, 
+                    110 - cameraOffset.y * 0.05, 
+                    5, 0, Math.PI * 2
+                );
+                ctx.arc(
+                    100 - cameraOffset.x * 0.05, 
+                    120 - cameraOffset.y * 0.05, 
+                    6, 0, Math.PI * 2
+                );
+                ctx.fill();
+            } else {
+                // Draw sun
+                ctx.fillStyle = '#FFEB3B';
+                ctx.beginPath();
+                ctx.arc(
+                    100 - cameraOffset.x * 0.05, 
+                    100 - cameraOffset.y * 0.05, 
+                    50, 0, Math.PI * 2
+                );
+                ctx.fill();
+                
+                // Sun rays with animation
+                const time = Date.now() * 0.001;
+                for (let i = 0; i < 12; i++) {
+                    const angle = (i / 12) * Math.PI * 2 + Math.sin(time) * 0.1;
+                    ctx.beginPath();
+                    ctx.moveTo(
+                        100 - cameraOffset.x * 0.05 + Math.cos(angle) * 50, 
+                        100 - cameraOffset.y * 0.05 + Math.sin(angle) * 50
+                    );
+                    ctx.lineTo(
+                        100 - cameraOffset.x * 0.05 + Math.cos(angle) * 70, 
+                        100 - cameraOffset.y * 0.05 + Math.sin(angle) * 70
+                    );
+                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = '#FFEB3B';
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Update camera position to follow player
+        function updateCamera() {
+            // Center camera on player with some easing
+            const targetX = player.x - canvas.width / 2 + player.width / 2;
+            const targetY = player.y - canvas.height / 2 + player.height / 2;
+            
+            // Apply easing to camera movement
+            cameraOffset.x += (targetX - cameraOffset.x) * 0.1;
+            cameraOffset.y += (targetY - cameraOffset.y) * 0.1;
+            
+            // Clamp camera to world bounds
+            cameraOffset.x = Math.max(0, Math.min(cameraOffset.x, canvas.width * 2 - canvas.width));
+            cameraOffset.y = Math.max(0, Math.min(cameraOffset.y, canvas.height - canvas.height));
+        }
+
+        // Handle player movement with improved platform collision
+        function movePlayer() {
+            if (keys.right) {
+                player.dx = PLAYER_SPEED;
+                player.facingRight = true;
+            } else if (keys.left) {
+                player.dx = -PLAYER_SPEED;
+                player.facingRight = false;
+            } else {
+                player.dx = 0;
+            }
+            
+            // Handle throwing the ball
+            if (keys.throw && Date.now() - lastBallThrowTime > ballThrowCooldown) {
+                throwBall();
+                lastBallThrowTime = Date.now();
+            }
+            
+            if (keys.up && !player.isJumping && !isPlayerOnBall) {
+                player.dy = -JUMP_POWER;
+                player.isJumping = true;
+                createParticles(player.x + player.width/2, player.y + player.height, '#FF5252', 5);
+            }
+            
+            // Handle sword attack
+            if (keys.attack && player.sword.cooldown <= 0) {
+                swordSwinging = true;
+                swordAngle = 0;
+                swordDirection = 1;
+                player.sword.cooldown = 30;
+                player.hitEnemies.clear();
+                createParticles(
+                    player.x + (player.facingRight ? player.width : 0),
+                    player.y + player.height/2,
+                    '#FFD700', 8
+                );
+            }
+            
+            // Apply horizontal movement with collision
+            player.x += player.dx;
+            
+            // Check horizontal collisions with platforms
+            let horizontalCollision = false;
+            platforms.forEach(platform => {
+                if (platform.type === 'ground') return;
+                
+                // Check if player is intersecting with platform horizontally
+                if (player.y + player.height > platform.y && player.y < platform.y + platform.height) {
+                    // Check right collision
+                    if (player.dx > 0 && player.x + player.width > platform.x && player.x < platform.x) {
+                        player.x = platform.x - player.width;
+                        horizontalCollision = true;
+                    }
+                    // Check left collision
+                    else if (player.dx < 0 && player.x < platform.x + platform.width && player.x + player.width > platform.x + platform.width) {
+                        player.x = platform.x + platform.width;
+                        horizontalCollision = true;
+                    }
+                }
+            });
+            
+            // Check beach ball collision (horizontal)
+            const ballDistX = Math.abs(player.x + player.width/2 - beachBall.x);
+            const ballDistY = Math.abs(player.y + player.height/2 - beachBall.y);
+            const minDistX = player.width/2 + beachBall.radius;
+            const minDistY = player.height/2 + beachBall.radius;
+            
+            if (ballDistX < minDistX && ballDistY < minDistY) {
+                // Push the ball
+                beachBall.dx = player.dx * 1.5;
+                if (keys.up && !player.isJumping && !isPlayerOnBall) {
+                    beachBall.dy = -JUMP_POWER * 0.8;
+                }
+                
+                // Adjust player position
+                if (player.dx > 0 && player.x + player.width > beachBall.x - beachBall.radius) {
+                    player.x = beachBall.x - beachBall.radius - player.width;
+                } else if (player.dx < 0 && player.x < beachBall.x + beachBall.radius) {
+                    player.x = beachBall.x + beachBall.radius;
+                }
+            }
+            
+            // Apply gravity
+            player.dy += GRAVITY;
+            player.y += player.dy;
+            
+            // Check vertical collisions
+            let onGround = false;
+            isPlayerOnBall = false;
+            
+            platforms.forEach(platform => {
+                // Check if player is above platform and falling
+                if (player.x + player.width > platform.x && 
+                    player.x < platform.x + platform.width && 
+                    player.y + player.height > platform.y && 
+                    player.y + player.height <= platform.y + player.dy) {
+                    
+                    player.dy = 0;
+                    player.y = platform.y - player.height;
+                    player.isJumping = false;
+                    onGround = true;
+                }
+                
+                // Prevent phasing through from below
+                if (player.x + player.width > platform.x && 
+                    player.x < platform.x + platform.width && 
+                    player.y < platform.y + platform.height && 
+                    player.y + player.height >= platform.y + platform.height) {
+                    
+                    player.dy = 0;
+                    player.y = platform.y + platform.height;
+                }
+            });
+            
+            // Check beach ball collision (vertical)
+            if (ballDistX < minDistX && ballDistY < minDistY) {
+                if (player.dy > 0 && player.y + player.height > beachBall.y - beachBall.radius) {
+                    // Player lands on ball
+                    if (beachBall.canBounce) {
+                        player.dy = -JUMP_POWER * 0.5; // Small bounce
+                        beachBall.dy = -JUMP_POWER * 0.7;
+                        player.y = beachBall.y - beachBall.radius - player.height;
+                        player.isJumping = false;
+                        onGround = true;
+                        isPlayerOnBall = true;
+                        
+                        // Small particles when landing on ball
+                        createParticles(beachBall.x, beachBall.y + beachBall.radius, beachBall.color, 5);
+                    }
+                } else if (player.dy < 0 && player.y < beachBall.y + beachBall.radius) {
+                    // Player hits ball from below
+                    player.dy = JUMP_POWER * 0.3;
+                    beachBall.dy = JUMP_POWER * 0.5;
+                    player.y = beachBall.y + beachBall.radius;
+                }
+            }
+            
+            // Check pebble collisions (can stand on them)
+            pebbles.forEach(pebble => {
+                const pebbleTop = pebble.y - pebble.radius;
+                if (player.x + player.width > pebble.x - pebble.radius && 
+                    player.x < pebble.x + pebble.radius && 
+                    player.y + player.height > pebbleTop && 
+                    player.y + player.height <= pebbleTop + player.dy) {
+                    
+                    player.dy = 0;
+                    player.y = pebbleTop - player.height;
+                    player.isJumping = false;
+                    onGround = true;
+                }
+            });
+            
+            // Ground collision
+            if (player.y + player.height >= canvas.height - 20) {
+                player.dy = 0;
+                player.y = canvas.height - 20 - player.height;
+                player.isJumping = false;
+                onGround = true;
+            }
+            
+            // Prevent player from going off-screen horizontally
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width * 2) player.x = canvas.width * 2 - player.width;
+        }
+
+        // Throw the ball with force
+        function throwBall() {
+            if (Math.abs(player.x + player.width/2 - beachBall.x) < player.width/2 + beachBall.radius + 10 &&
+                Math.abs(player.y + player.height/2 - beachBall.y) < player.height/2 + beachBall.radius + 10) {
+                
+                // Calculate direction based on player facing
+                beachBall.dx = (player.facingRight ? 1 : -1) * BALL_THROW_POWER;
+                beachBall.dy = -BALL_THROW_POWER * 0.7;
+                beachBall.canBounce = false;
+                
+                // Small delay before ball can bounce again
+                setTimeout(() => {
+                    beachBall.canBounce = true;
+                }, 300);
+                
+                // Particles when throwing
+                createParticles(beachBall.x, beachBall.y, beachBall.color, 10);
+            }
+        }
+
+        // Update beach ball physics
+        function updateBeachBall() {
+            // Apply gravity
+            beachBall.dy += GRAVITY * 0.7;
+            
+            // Apply friction
+            beachBall.dx *= 0.98;
+            beachBall.dy *= 0.99;
+            
+            // Update position
+            beachBall.x += beachBall.dx;
+            beachBall.y += beachBall.dy;
+            
+            // Update rotation based on movement
+            beachBall.rotation += beachBall.dx * 0.02;
+            beachBall.rotationSpeed = beachBall.dx * 0.02;
+            
+            // Check collisions with platforms
+            platforms.forEach(platform => {
+                // Check if ball is above platform and falling
+                if (beachBall.x + beachBall.radius > platform.x && 
+                    beachBall.x - beachBall.radius < platform.x + platform.width && 
+                    beachBall.y + beachBall.radius > platform.y && 
+                    beachBall.y - beachBall.radius < platform.y + platform.height) {
+                    
+                    // Bottom collision
+                    if (beachBall.dy > 0 && beachBall.y - beachBall.radius < platform.y) {
+                        beachBall.y = platform.y - beachBall.radius;
+                        beachBall.dy = -beachBall.dy * 0.7; // Bounce with some energy loss
+                        beachBall.dx *= 0.9; // Friction
+                        
+                        // Small particles when bouncing
+                        if (Math.abs(beachBall.dy) > 1) {
+                            createParticles(beachBall.x, beachBall.y + beachBall.radius, beachBall.color, 3);
+                        }
+                    }
+                    // Top collision
+                    else if (beachBall.dy < 0 && beachBall.y + beachBall.radius > platform.y + platform.height) {
+                        beachBall.y = platform.y + platform.height + beachBall.radius;
+                        beachBall.dy = -beachBall.dy * 0.5;
+                    }
+                    // Left collision
+                    else if (beachBall.dx > 0 && beachBall.x - beachBall.radius < platform.x) {
+                        beachBall.x = platform.x - beachBall.radius;
+                        beachBall.dx = -beachBall.dx * 0.8;
+                    }
+                    // Right collision
+                    else if (beachBall.dx < 0 && beachBall.x + beachBall.radius > platform.x + platform.width) {
+                        beachBall.x = platform.x + platform.width + beachBall.radius;
+                        beachBall.dx = -beachBall.dx * 0.8;
+                    }
+                }
+            });
+            
+            // Check ground collision
+            if (beachBall.y + beachBall.radius >= canvas.height - 20) {
+                beachBall.y = canvas.height - 20 - beachBall.radius;
+                beachBall.dy = -beachBall.dy * 0.7;
+                beachBall.dx *= 0.8;
+                
+                // Small particles when bouncing on ground
+                if (Math.abs(beachBall.dy) > 1) {
+                    createParticles(beachBall.x, beachBall.y + beachBall.radius, beachBall.color, 3);
+                }
+            }
+            
+            // Keep ball in bounds
+            if (beachBall.x - beachBall.radius < 0) {
+                beachBall.x = beachBall.radius;
+                beachBall.dx = -beachBall.dx * 0.8;
+            }
+            if (beachBall.x + beachBall.radius > canvas.width * 2) {
+                beachBall.x = canvas.width * 2 - beachBall.radius;
+                beachBall.dx = -beachBall.dx * 0.8;
+            }
+        }
+
+        // Handle sword swing animation
+        function updateSword() {
+            if (swordSwinging) {
+                swordAngle += 0.1 * swordDirection;
+                if (swordAngle >= 1) {
+                    swordDirection = -1;
+                } else if (swordAngle <= 0) {
+                    swordSwinging = false;
+                }
+                
+                // Check for hits during swing
+                checkSwordHits();
+            }
+            
+            if (player.sword.cooldown > 0) {
+                player.sword.cooldown--;
+            }
+        }
+
+        // Check if sword hits enemies
+        function checkSwordHits() {
+            const swordX = player.x + (player.facingRight ? player.width : 0);
+            const swordY = player.y + player.height / 2;
+            
+            enemies.forEach(enemy => {
+                if (player.hitEnemies.has(enemy)) return;
+                
+                const angle = player.facingRight ? 
+                    -SWORD_ANGLE + swordAngle * SWORD_ANGLE * 2 : 
+                    Math.PI + SWORD_ANGLE - swordAngle * SWORD_ANGLE * 2;
+                
+                const tipX = swordX + Math.cos(angle) * SWORD_RANGE;
+                const tipY = swordY + Math.sin(angle) * SWORD_RANGE;
+                
+                const enemyCenterX = enemy.x + enemy.width / 2;
+                const enemyCenterY = enemy.y + enemy.height / 2;
+                
+                const distance = Math.sqrt(
+                    Math.pow(tipX - enemyCenterX, 2) + 
+                    Math.pow(tipY - enemyCenterY, 2)
+                );
+                
+                if (distance < 30) {
+                    enemy.health -= player.sword.damage;
+                    player.hitEnemies.add(enemy);
+                    
+                    // Knockback effect
+                    enemy.dx = player.facingRight ? 5 : -5;
+                    enemy.dy = -3;
+                    
+                    if (enemy.health <= 0) {
+                        score += enemy.type === 'wolf' ? 100 : 50;
+                        enemiesOnScreen--;
+                        createParticles(enemyCenterX, enemyCenterY, '#FF5252', 15);
+                        updateUI();
+                    } else {
+                        createParticles(enemyCenterX, enemyCenterY, '#FFA000', 8);
+                    }
+                }
+            });
+        }
+
+        // Handle enemy movement and spawning
+        function updateEnemies() {
+            // Spawn new enemies if needed (only in level 4)
+            if (isDarkLevel && enemiesRemaining > 0 && enemiesOnScreen < maxEnemiesOnScreen) {
+                spawnEnemy();
+            }
+            
+            // Move enemies and check bounds
+            enemies.forEach(enemy => {
+                // Enemy AI - chase player in battle arena
+                if (isDarkLevel) {
+                    if (enemy.attackCooldown <= 0) {
+                        // Move toward player
+                        if (player.x < enemy.x) {
+                            enemy.dx = -ENEMY_SPEED;
+                            enemy.direction = -1;
+                        } else {
+                            enemy.dx = ENEMY_SPEED;
+                            enemy.direction = 1;
+                        }
+                        
+                        // Check if enemy can attack
+                        const distanceToPlayer = Math.abs(player.x - enemy.x);
+                        if (distanceToPlayer < enemy.attackRange) {
+                            enemy.dx = 0;
+                            enemy.attackCooldown = 60;
+                            
+                            // Damage player if in range
+                            if (!invulnerable && distanceToPlayer < enemy.attackRange - 20) {
+                                takeDamage(0.5);
+                                createParticles(
+                                    player.x + player.width/2, 
+                                    player.y + player.height/2,
+                                    '#FF5252', 10
+                                );
+                            }
+                        }
+                    } else {
+                        enemy.attackCooldown--;
+                    }
+                } else {
+                    // Simple AI - turn around at edges
+                    if (enemy.x < 0 || enemy.x + enemy.width > canvas.width * 2) {
+                        enemy.dx *= -1;
+                        enemy.direction *= -1;
+                    }
+                }
+                
+                enemy.x += enemy.dx;
+                
+                // Apply gravity to enemies
+                if (enemy.y + enemy.height < canvas.height - 20) {
+                    enemy.dy += GRAVITY;
+                } else {
+                    enemy.dy = 0;
+                    enemy.y = canvas.height - 20 - enemy.height;
+                }
+                
+                enemy.y += enemy.dy;
+            });
+            
+            // Remove dead enemies
+            enemies = enemies.filter(enemy => enemy.health > 0);
+            
+            // Check if level is complete
+            if (!isDarkLevel) {
+                // Star collection levels
+                if (starsCollected >= totalStars && !isLevelComplete) {
+                    completeLevel();
+                }
+            } else {
+                // Battle level
+                if (enemiesRemaining <= 0 && enemiesOnScreen <= 0 && enemies.length === 0 && !isLevelComplete) {
+                    showVictoryScreen();
+                }
+            }
+        }
+
+        // Show victory screen
+        function showVictoryScreen() {
+            gameActive = false;
+            isLevelComplete = true;
+            victoryScoreElement.textContent = `Final Score: ${score}`;
+            
+            if (level === LEVEL_COUNT) {
+                // Final victory
+                victoryElement.querySelector('h1').textContent = 'You Mastered Both Sides!';
+                nextStageButton.textContent = 'Play Again';
+            }
+            
+            victoryElement.style.display = 'block';
+        }
+
+        // Check star collection
+        function checkStarCollection() {
+            stars.forEach(star => {
+                if (star.collected) return;
+                
+                const playerCenterX = player.x + player.width / 2;
+                const playerCenterY = player.y + player.height / 2;
+                
+                const distance = Math.sqrt(
+                    Math.pow(playerCenterX - star.x, 2) + 
+                    Math.pow(playerCenterY - star.y, 2)
+                );
+                
+                if (distance < 25) {
+                    star.collected = true;
+                    starsCollected++;
+                    score += 100;
+                    createParticles(star.x, star.y, 'gold', 15);
+                    updateUI();
+                }
+            });
+        }
+
+        // Handle collisions
+        function handleCollisions() {
+            // Enemy collisions
+            enemies.forEach(enemy => {
+                if (
+                    player.x < enemy.x + enemy.width &&
+                    player.x + player.width > enemy.x &&
+                    player.y < enemy.y + enemy.height &&
+                    player.y + player.height > enemy.y &&
+                    !invulnerable
+                ) {
+                    takeDamage(0.5);
+                    // Knockback effect
+                    player.dx = player.x < enemy.x ? -8 : 8;
+                    player.dy = -5;
+                    createParticles(
+                        player.x + player.width/2, 
+                        player.y + player.height/2,
+                        '#FF5252', 10
+                    );
+                }
+            });
+            
+            // Check spike collisions
+            checkSpikeCollisions();
+            
+            // Update invulnerability timer
+            if (invulnerable) {
+                invulnerableTimer--;
+                if (invulnerableTimer <= 0) {
+                    invulnerable = false;
+                }
+            }
+        }
+
+        // Player takes damage
+        function takeDamage(amount = 1) {
+            if (!invulnerable) {
+                lives -= amount;
+                invulnerable = true;
+                invulnerableTimer = 60;
+                if (lives <= 0) {
+                    gameOver();
+                }
+                updateUI();
+            }
+        }
+
+        // Level complete
+        function completeLevel() {
+            isLevelComplete = true;
+            levelScoreElement.textContent = `Score: ${score}`;
+            levelCompleteElement.style.display = 'block';
+            gameActive = false;
+        }
+
+        // Start next level with transition
+        function startNextLevel() {
+            if (level < LEVEL_COUNT) {
+                // Special transition from level 3 to 4
+                if (level === 3) {
+                    startLevelTransition();
+                } else {
+                    // Show transition
+                    transitionScreen.style.opacity = 1;
+                    setTimeout(() => {
+                        level++;
+                        setupLevel(level);
+                        // Hide transition
+                        setTimeout(() => {
+                            transitionScreen.style.opacity = 0;
+                            gameActive = true;
+                        }, 500);
+                    }, 1000);
+                }
+            } else {
+                // If all levels completed, restart from level 1
+                level = 1;
+                score = 0;
+                lives = 3;
+                setupLevel(level);
+                gameActive = true;
+            }
+        }
+
+        // Special transition from level 3 to 4
+        function startLevelTransition() {
+            isTransitioning = true;
+            transitionStartTime = Date.now();
+            originalPlatforms = JSON.parse(JSON.stringify(platforms));
+            originalClouds = JSON.parse(JSON.stringify(clouds));
+            
+            // Create target clouds for dark theme
+            targetClouds = [];
+            for (let i = 0; i < 10; i++) {
+                targetClouds.push({
+                    x: Math.random() * canvas.width * 2,
+                    y: Math.random() * canvas.height * 0.4,
+                    width: 80 + Math.random() * 120,
+                    speed: 0.1 + Math.random() * 0.7,
+                    color: 'rgba(50,50,70,0.7)',
+                    parallax: 0.2 + Math.random() * 0.3
+                });
+            }
+            
+            gameActive = true;
+        }
+
+        // Update transition from level 3 to 4
+        function updateTransition() {
+            if (!isTransitioning) return;
+            
+            const now = Date.now();
+            const elapsed = now - transitionStartTime;
+            const progress = Math.min(elapsed / TRANSITION_DURATION, 1);
+            
+            // Interpolate platforms
+            for (let i = 0; i < platforms.length; i++) {
+                if (i >= originalPlatforms.length || i >= targetPlatforms.length) continue;
+                
+                const original = originalPlatforms[i];
+                const target = targetPlatforms[i];
+                
+                platforms[i].x = original.x + (target.x - original.x) * progress;
+                platforms[i].y = original.y + (target.y - original.y) * progress;
+                platforms[i].width = original.width + (target.width - original.width) * progress;
+                platforms[i].height = original.height + (target.height - original.height) * progress;
+                platforms[i].borderRadius = original.borderRadius + (target.borderRadius - original.borderRadius) * progress;
+                
+                // Interpolate color
+                const originalColor = hexToRgb(original.color);
+                const targetColor = hexToRgb(target.color);
+                const currentColor = {
+                    r: originalColor.r + (targetColor.r - originalColor.r) * progress,
+                    g: originalColor.g + (targetColor.g - originalColor.g) * progress,
+                    b: originalColor.b + (targetColor.b - originalColor.b) * progress
+                };
+                platforms[i].color = rgbToHex(currentColor.r, currentColor.g, currentColor.b);
+            }
+            
+            // Interpolate clouds
+            for (let i = 0; i < clouds.length; i++) {
+                if (i >= originalClouds.length || i >= targetClouds.length) continue;
+                
+                const original = originalClouds[i];
+                const target = targetClouds[i];
+                
+                clouds[i].width = original.width + (target.width - original.width) * progress;
+                
+                // Interpolate color
+                const originalColor = hexToRgba(original.color);
+                const targetColor = hexToRgba(target.color);
+                const currentColor = {
+                    r: originalColor.r + (targetColor.r - originalColor.r) * progress,
+                    g: originalColor.g + (targetColor.g - originalColor.g) * progress,
+                    b: originalColor.b + (targetColor.b - originalColor.b) * progress,
+                    a: originalColor.a + (targetColor.a - originalColor.a) * progress
+                };
+                clouds[i].color = `rgba(${Math.round(currentColor.r)}, ${Math.round(currentColor.g)}, ${Math.round(currentColor.b)}, ${currentColor.a})`;
+            }
+            
+            // Interpolate background
+            const originalBg = hexToRgb('#56CCF2');
+            const targetBg = hexToRgb('#0f0c29');
+            const currentBg = {
+                r: originalBg.r + (targetBg.r - originalBg.r) * progress,
+                g: originalBg.g + (targetBg.g - originalBg.g) * progress,
+                b: originalBg.b + (targetBg.b - originalBg.b) * progress
+            };
+            body.style.background = `linear-gradient(to bottom, ${rgbToHex(currentBg.r, currentBg.g, currentBg.b)}, ${rgbToHex(
+                currentBg.r * 0.8, currentBg.g * 0.8, currentBg.b * 0.8
+            )})`;
+            
+            // Interpolate canvas background
+            const originalCanvasBg = hexToRgb('#87CEEB');
+            const targetCanvasBg = hexToRgb('#1a1a2e');
+            const currentCanvasBg = {
+                r: originalCanvasBg.r + (targetCanvasBg.r - originalCanvasBg.r) * progress,
+                g: originalCanvasBg.g + (targetCanvasBg.g - originalCanvasBg.g) * progress,
+                b: originalCanvasBg.b + (targetCanvasBg.b - originalCanvasBg.b) * progress
+            };
+            canvas.style.background = `linear-gradient(to bottom, ${rgbToHex(currentCanvasBg.r, currentCanvasBg.g, currentCanvasBg.b)}, ${rgbToHex(
+                currentCanvasBg.r * 1.2, currentCanvasBg.g * 1.2, currentCanvasBg.b * 1.2
+            )})`;
+            
+            // When transition is complete
+            if (progress >= 1) {
+                isTransitioning = false;
+                level++;
+                setupLevel(level);
+            }
+        }
+
+        // Helper function to convert hex to RGB
+        function hexToRgb(hex) {
+            // Remove # if present
+            hex = hex.replace('#', '');
+            
+            // Parse r, g, b values
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            
+            return { r, g, b };
+        }
+
+        // Helper function to convert hex to RGBA
+        function hexToRgba(hex) {
+            // Handle rgba strings
+            if (hex.startsWith('rgba')) {
+                const parts = hex.match(/[\d.]+/g);
+                return {
+                    r: parseFloat(parts[0]),
+                    g: parseFloat(parts[1]),
+                    b: parseFloat(parts[2]),
+                    a: parseFloat(parts[3])
+                };
+            }
+            
+            // Handle rgb strings
+            if (hex.startsWith('rgb')) {
+                const parts = hex.match(/\d+/g);
+                return {
+                    r: parseInt(parts[0]),
+                    g: parseInt(parts[1]),
+                    b: parseInt(parts[2]),
+                    a: 1
+                };
+            }
+            
+            // Handle hex strings
+            hex = hex.replace('#', '');
+            
+            // Parse r, g, b values
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            
+            return { r, g, b, a: 1 };
+        }
+
+        // Helper function to convert RGB to hex
+        function rgbToHex(r, g, b) {
+            return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1);
+        }
+
+        // Game over
+        function gameOver() {
+            isGameOver = true;
+            gameActive = false;
+            finalScoreElement.textContent = `Your score: ${score}`;
+            gameOverElement.style.display = 'block';
+        }
+
+        // Reset game
+        function resetGame() {
+            level = 1;
+            score = 0;
+            lives = 3;
+            isGameOver = false;
+            setupLevel(level);
+            gameActive = true;
+        }
+
+        // Main game loop
+        function gameLoop() {
+            if (!gameActive) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Update transition if active
+            if (isTransitioning) {
+                updateTransition();
+            }
+            
+            // Update camera position
+            updateCamera();
+            
+            // Draw background elements (with parallax)
+            drawBackgroundElements();
+            drawClouds();
+            drawSunOrMoon();
+            
+            // Draw game elements
+            drawPlatforms();
+            drawPebbles();
+            drawStars();
+            drawEnemies();
+            drawPlayer();
+            drawBeachBall();
+            drawBirds();
+            drawParticles();
+            drawDecorations();
+            drawSpikes();
+            
+            // Update game state
+            movePlayer();
+            updateSword();
+            updateBeachBall();
+            updateEnemies();
+            updateMovingPlatforms();
+            
+            if (!isDarkLevel) checkStarCollection();
+            handleCollisions();
+            
+            // Continue loop
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the game
+        initGame();
+    </script>
+</body>
+</html>
