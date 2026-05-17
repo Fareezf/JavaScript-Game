@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Necro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" href="56.webp" type="image/webp">
+    <style>
+        body {
+            background: linear-gradient(135deg, #76eee4, #2475c1, #d5e312); /* Bright gradient background */
+            color: white;
+            font-family: 'Press Start 2P', cursive; /* Pixel font for the entire body */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            position: relative; /* Allow absolute positioning of the gear icon */
+            flex-direction: column; /* Stack elements vertically */
+            overflow: hidden; /* Prevent scrollbars */
+        }
+
+        /* Video background */
+        .video-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Behind all other content */
+            object-fit: cover; /* Cover the entire background */
+        }
+
+        /* Canvas for particle background */
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: -2; /* Behind the video background */
+        }
+
+       
+        
+
+        .title {
+            position: absolute; /* Position the title absolutely */
+            top: 10%; /* Set the title to be at the top 10% of the screen */
+            text-align: center;
+            color: rgb(0, 0, 0); /* Title color */
+            text-shadow: 6px 6px 0 rgb(255, 255, 255); /* Shadow for pixel effect */
+            animation: float 2s ease-in-out infinite; /* Floating animation */
+        }
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px); /* Float up by 10px */
+            }
+        }
+        h1 {
+            font-size: 100px; /* Adjust this value to change the title size */
+            margin: 0; /* Remove default margin */
+        }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px; /* Space between buttons */
+            position: relative; /* Keep buttons in normal flow */
+            margin-top: 150px; /* Adjust this value to position buttons lower */
+            animation: float 2s ease-in-out infinite; /* Floating animation */
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 24px;
+            cursor: pointer;
+            border: 3.5px solid rgb(0, 0, 0); /* Border for pixel effect */
+            border-radius: 5px;
+            transition: background-color 0.3s, transform 0.3s; /* Transition for hover effects */
+            text-shadow: 1px 1px 0 rgb(255, 255, 255); /* Shadow for pixel effect */
+            font-family: 'Press Start 2P', cursive; 
+            background-color: rgb(255, 106, 0);
+            box-shadow: 1px 1px #fff;
+        }
+
+        button:hover {
+            background-color: rgb(255, 106, 0);
+            transform: scale(1.1); /* Scale up on hover */
+        }
+
+        .gear-button {
+            position: absolute; /* Position the gear icon absolutely */
+            top: 20px; /* Distance from the top */
+            right: 20px; /* Distance from the right */
+            background-color: rgb(255, 106, 0);
+            border: 3.5px solid rgb(0, 0, 0); /* Border for pixel effect */
+            color: rgb(0, 0, 0); /* Icon color */
+            box-shadow: 1px 1px #fff;
+            font-size: 30px; /* Icon size */
+            cursor: pointer; /* Pointer cursor */
+            width: 50px; /* Set width */
+            height: 50px; /* Set height */
+            border-radius: 10px; /* Make it circular */
+            display: flex; /* Use flexbox to center the icon */
+            justify-content: center; /* Center horizontally */
+            align-items: center; /* Center vertically */
+            transition: transform 0.3s; /* Transition for smooth rotation */
+        }
+
+        .gear-button:hover {
+            transform: rotate(360deg); /* Rotate the icon on hover */
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0, 0, 0, 0.8); /* Black w/ opacity */
+            padding-top: 60px; /* Location of content */
+        }
+
+        .modal-content {
+            background-color: #ffc800; /* Darker background for the modal */
+            margin: 5% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 3px black;
+            width: 80%; /* Could be more or less, depending on screen size */
+            color: rgb(0, 0, 0); /* Text color */
+            text-shadow: 2px 2px 0 rgb(255, 255, 255); /* Shadow for pixel effect */
+            text-align: center; /* Center text */
+            border-radius: 10px; /* Rounded corners */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Shadow effect */
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: red;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        /* Additional styles for the modal text */
+        .modal h2 {
+            font-size: 36px; /* Adjust heading size */
+            margin-bottom: 20px; /* Space below heading */
+        }
+
+        .modal p {
+            font-size: 20px; /* Adjust paragraph size */
+            line-height: 1.5; /* Improve line spacing */
+        }
+
+        .settings-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px; /* Space between buttons */
+        }
+
+        .modal.show {
+            display: block; /* Show modal */
+        }
+
+        .settings-menu {
+            padding: 20px;
+        }
+
+        .dark-mode {
+            background-color: #333;
+            color: #fff;
+        }
+
+        .settings-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .settings {
+            width: 300px; /* Adjust as needed */
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            text-align: center;
+        }
+
+        .setting-item {
+            margin-bottom: 15px; /* Space between items */
+        }
+
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Flying Shapes Styles */
+        #shapeContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allow clicks to pass through */
+            z-index: -3; /* Behind the video and canvas */
+        }
+
+        @keyframes fly {
+            0% {
+                transform: translateY(0) translateX(0);
+                opacity: 0.5;
+            }
+            100% {
+                transform: translateY(-100vh) translateX(100vw);
+                opacity: 0;
+            }
+        }
+
+       
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas> <!-- Canvas for particle background -->
+
+    <div id="shapeContainer"></div> <!-- Container for flying shapes -->
+
+    <button class="gear-button" onclick="showOptions()">
+        <i class="fas fa-cog"></i> <!-- Gear icon -->
+    </button>
+
+    <div class="title">
+        <h1>Necro</h1> <!-- Updated title -->
+    </div>
+
+    <div class="button-container">
+        <button onclick="startGame()">Start Game</button>
+        <button onclick="showInstructions()">How to Play</button>
+        <button onclick="showMinigames()">Minigames</button>
+        <button onclick="confirmExit()">Exit</button> <!-- Updated exit button -->
+    </div>
+
+    <!-- Modal for Instructions -->
+    <div id="instructionsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeInstructions()">&times;</span>
+            <h2>How to Play</h2>
+            <p>
+                1. Use the WASD or arrow keys to move.<br>
+                2. In the light dimension, navigate through the course, avoid the obstacles and complete 3 levels.<br>
+                3. Once 3 levels are complete, shift reality from light to dark.<br>
+                4. Press the F or J key to attack.
+                5. In the dark dimension, defeat all the enemies and complete the level.<br>
+                6. There are 5 stages in total. Every normal stage has 4 levels, while the boss levels only have one. The first 3 levels is to collect stars and the last level is to fight a wave of enemies<br>
+                7. There is also a boss fight at the end level.<br>
+                8. You have 2 minutes to complete each BOSS level.<br>
+                Good luck!
+            </p>
+        </div>
+    </div>
+
+    <!-- Modal for Settings -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSettings()">&times;</span>
+            <h2>Settings</h2>
+            <div class="settings-options">
+                <label for="brightness">Adjust Brightness:</label>
+                <input type="range" id="brightness" min="0" max="100" value="100">
+                <button id="toggle-music">Toggle Music</button>
+                <button onclick="changeMusic()">Change Music</button>
+               
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Minigames -->
+    <div id="minigamesModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeMinigames()">&times;</span>
+            <h2>Minigames</h2>
+            <p>Here you can play various minigames!</p>
+            <button onclick="startGAWK()">2048 Tiles</button>
+            <button onclick="startTICTAC()">Tic Tac Toe</button>
+            <button onclick="startCARD()">Card Memory</button>
+            <button onclick="startREACTION()">Reaction Time Test</button>
+            <button onclick="startPAPER()">Rock Paper Scissors</button>
+            <button onclick="startSPACE()">Space Invaders</button>
+            <button onclick="startPUZZLE()">Puzzle</button>
+            <button onclick="startBLACK()">Black Jack</button>
+          
+            <button onclick="startSUDOKU()">Sudoku</button>
+            <button onclick="startWORDLE()">Wordle</button>
+         
+            <button onclick="startSNAKE()">Snake Game</button>
+            <button onclick="startDINO()">Steve Dinosaur</button>
+            <button onclick="startCRUSH()">Candy Crush</button>
+            <button onclick="startMINE()">Minesweeper</button>
+            <button onclick="startBREAKIN()">Breakout</button>
+            <button onclick="startPING()">Pong</button>
+            <button onclick="startDoodler()">Doodle Jump</button>
+            <button onclick="startDARK()">Dark Arena</button>
+            <button onclick="startFLAP()">Flappy Bird</button>
+            <button onclick="start4()">Connect 4</button>
+        </div>
+    </div>
+
+    <script>
+         function startPING(){
+            window.location.href = "Dong.html";
+         }
+         function startBLACK(){
+            window.location.href = "black.html";
+         }
+         function start4(){
+            window.location.href = "connect.html";
+         }
+         function startFLAP(){
+            window.location.href = "falppy.html";
+         }
+         function startSUDOKU(){
+            window.location.href = "sudoku.html";
+         }
+         function startDINO(){
+            window.location.href = "dino.html";
+         }
+
+         function startMINE(){
+            window.location.href = " MINESWEEPER.html";
+         }
+        
+         function startPUZZLE(){
+            window.location.href = " puzzle.html";
+         }
+         function startBREAKIN(){
+            window.location.href = "breakin.html";
+         }
+        
+          function startDARK() {
+            // Redirect to the game page
+            window.location.href = 'Dark Arena.html'; // Change 'game.html' to the actual path of your game page
+        }
+        function startWORDLE() {
+            // Redirect to the game page
+            window.location.href = 'wordle.html'; // Change 'game.html' to the actual path of your game page
+        }
+         function startSNAKE() {
+            // Redirect to the game page
+            window.location.href = 'snake.html'; // Change 'game.html' to the actual path of your game page
+        }
+        function startGAWK() {
+            // Redirect to the game page
+            window.location.href = 'nego.html'; // Change 'game.html' to the actual path of your game page
+        }
+        function startCRUSH() {
+            // Redirect to the game page
+            window.location.href = 'niger.html'; // Change 'game.html' to the actual path of your game page
+        }
+        function startDoodler() {
+            // Redirect to the game page
+            window.location.href = 'doodler.html'; // Change 'game.html' to the actual path of your game page
+        }
+        function startSPACE() {
+            // Redirect to the game page
+            window.location.href = 'SPACEINVADER.html'; // Change 'game.html' to the actual path of your game page
+        }
+        function startTICTAC() {
+            // Redirect to the game page
+            window.location.href = 'TIC.html'; // Change 'game.html' to the actual path of your game page
+        } function startCARD() {
+            // Redirect to the game page
+            window.location.href = 'memory.html'; // Change 'game.html' to the actual path of your game page
+        } function startREACTION() {
+            // Redirect to the game page
+            window.location.href = 'reaction.html'; // Change 'game.html' to the actual path of your game page
+        } function startPAPER() {
+            // Redirect to the game page
+            window.location.href = 'rps.html'; // Change 'game.html' to the actual path of your game page
+        }
+        // Particle background animation
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        let particles = [];
+        const colors = ['#ffeb3b', '#ff9800', '#f44336', '#2196f3', '#3f51b5'];
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 5 + 1;
+                this.speedX = Math.random() * 3 - 1.5;
+                this.speedY = Math.random() * 3 - 1.5;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+
+               
+                if (this.size < 0.1) this.size = 0.1;
+                if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < 200; i++) {
+                particles.push(new Particle(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            requestAnimationFrame(animateParticles);
+        }
+
+        
+        const createShapes = () => {
+            const container = document.getElementById('shapeContainer');
+            for (let i = 0; i < 20; i++) {
+                const shape = document.createElement('div');
+                shape.className = 'shape';
+                shape.style.width = Math.random() * 50 + 'px';
+                shape.style.height = Math.random() * 50 + 'px';
+                shape.style.left = Math.random() * 100 + 'vw';
+                shape.style.top = Math.random() * 100 + 'vh';
+                container.appendChild(shape);
+            }
+        };
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initParticles();
+        });
+
+        initParticles();
+        animateParticles();
+        createShapes();
+
+        // Existing JavaScript code for modals and game functionality
+        let tracks = ["Rizz.mp3", "58.mp3", "nigga.mp3"]; // Add your music file paths here
+        let currentTrackIndex = 0;
+        const audio = new Audio(tracks[currentTrackIndex]); // Initialize audio with the first track
+        audio.loop = true; // Set the audio to loop
+        let isMusicPlaying = false;
+
+        function startGame() {
+            // Redirect to the game page
+            window.location.href = 'level.html'; // Change 'game.html' to the actual path of your game page
+        }
+
+        function showOptions() {
+            document.getElementById('settingsModal').style.display = 'block'; // Show settings modal
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').style.display = 'none'; // Hide settings modal
+        }
+
+        function showInstructions() {
+            document.getElementById('instructionsModal').style.display = 'block'; // Show instructions modal
+        }
+
+        function closeInstructions() {
+            document.getElementById('instructionsModal').style.display = 'none'; // Hide instructions modal
+        }
+
+        function showMinigames() {
+            document.getElementById('minigamesModal').style.display = 'block'; // Show minigames modal
+        }
+
+        function closeMinigames() {
+            document.getElementById('minigamesModal').style.display = 'none'; // Hide minigames modal
+        }
+
+        function confirmExit() {
+            // Redirect to another page
+            window.location.href = 'Home.html'; // Change to your desired URL
+        }
+
+        function changeMusic() {
+            currentTrackIndex = (currentTrackIndex + 1) % tracks.length; // Move to the next track
+            audio.src = tracks[currentTrackIndex]; // Change the audio source
+            audio.play(); // Play the new track
+            alert("Now playing: " + tracks[currentTrackIndex]); // Alert the user
+        }
+
+        // Music Toggle functionality
+        document.getElementById("toggle-music").addEventListener("click", function() {
+            if (isMusicPlaying) {
+                audio.pause(); // Pause the music
+                this.textContent = "Play Music"; // Update button text
+            } else {
+                audio.play(); // Play the music
+                this.textContent = "Pause Music"; // Update button text
+            }
+            isMusicPlaying = !isMusicPlaying; // Toggle the playing state
+        });
+
+        // Brightness Adjustment functionality
+        document.getElementById("brightness").addEventListener("input", function() {
+            const brightnessValue = this.value;
+            document.body.style.filter = `brightness(${brightnessValue}%)`;
+        });
+
+        // Close the modal when the user clicks anywhere outside of it
+        window.onclick = function(event) {
+            const instructionsModal = document.getElementById('instructionsModal');
+            const settingsModal = document.getElementById('settingsModal');
+            const minigamesModal = document.getElementById('minigamesModal');
+            if (event.target === instructionsModal) {
+                closeInstructions();
+            }
+            if (event.target === settingsModal) {
+                closeSettings();
+            }
+            if (event.target === minigamesModal) {
+                closeMinigames();
+            }
+        }
+
+        // Dark/Light Mode Toggle in Settings Modal
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        darkModeToggle.addEventListener('click', function() {
+            document.body.classList.toggle('dark-mode');
+            document.body.classList.toggle('light-mode'); // Add light mode class
+            darkModeToggle.classList.toggle('active');
+            updateColors();
+        });
+
+        function updateColors() {
+            const hero = document.querySelector('.hero');
+            const footer = document.querySelector('footer');
+            const specCards = document.querySelectorAll('.spec-card');
+
+            if (document.body.classList.contains('light-mode')) {
+                hero.style.background = '#f0f0f0'; // Light background for hero
+                footer.style.background = '#f0f0f0'; // Light background for footer
+                specCards.forEach(card => {
+                    card.style.background = '#e0e0e0'; // Light background for system requirements
+                });
+            } else {
+                hero.style.background = '#2a2a2a'; // Dark background for hero
+                footer.style.background = '#2a2a2a'; // Dark background for footer
+                specCards.forEach(card => {
+                    card.style.background = '#2a2a2a'; // Dark background for system requirements
+                });
+            }
+        }
+    </script>
+</body>
+</html>

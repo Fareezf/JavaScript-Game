@@ -1,0 +1,12 @@
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #ffbee5;
+    text-align: center;
+}
+
+img {
+    display: inline-block;
+    width: 100px;
+    margin: 20px auto;
+    cursor: pointer;
+}
